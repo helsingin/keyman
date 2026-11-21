@@ -9,6 +9,7 @@
 | PKI | Self-signed X.509 certificate creation using an HSM-resident private key |
 | Certificates | PKCS#11 certificate object storage with subject, issuer, serial, key ID, and DER value attributes |
 | Key management | AES-256-GCM, RSA-4096, and ECDSA P-256 key creation with metadata and versioning |
+| P-256 agreement | `CreateP256SigningAndAgreementKey` enables signing and ECDH for one token key. `ECDH` returns a 32-byte shared secret. The private key stays inside the token. Rotation preserves the permitted uses. |
 | Private key protection | Secret and private key templates use sensitive, non-extractable key attributes |
 | HSM integration | SoftHSM-backed PKCS#11 integration test suite using a containerized token |
 | PKCS#11 | Token discovery, session login, object lookup, key generation, AES-GCM, RSA/ECDSA signing, certificate objects |

@@ -9,6 +9,7 @@ import (
 )
 
 type keyMetadata struct {
+	Agreement bool            `json:"agreement,omitempty"`
 	Type      keyring.KeyType `json:"type"`
 	Version   int             `json:"version"`
 	CreatedAt time.Time       `json:"created_at"`
