@@ -18,6 +18,15 @@ var ecParamsP256 = []byte{0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 
 
 // CreateKey creates version 1 of a non-extractable key.
 func (m *Manager) CreateKey(ctx context.Context, keyType keyring.KeyType, name string) (*keyring.Key, error) {
+	return m.createKey(ctx, keyType, name, false)
+}
+
+// CreateP256SigningAndAgreementKey permits both signing and ECDH with one non-extractable P-256 key.
+func (m *Manager) CreateP256SigningAndAgreementKey(ctx context.Context, name string) (*keyring.Key, error) {
+	return m.createKey(ctx, keyring.KeyTypeECDSAP256, name, true)
+}
+
+func (m *Manager) createKey(ctx context.Context, keyType keyring.KeyType, name string, agreement bool) (*keyring.Key, error) {
 	if err := checkContext(ctx); err != nil {
 		return nil, err
 	}
@@ -47,7 +56,7 @@ func (m *Manager) CreateKey(ctx context.Context, keyType keyring.KeyType, name s
 			return nil, err
 		}
 	case keyring.KeyTypeECDSAP256:
-		if err := m.createECDSAKeyLocked(name, 1); err != nil {
+		if err := m.createECDSAKeyLocked(name, 1, agreement); err != nil {
 			return nil, err
 		}
 	default:
@@ -55,7 +64,7 @@ func (m *Manager) CreateKey(ctx context.Context, keyType keyring.KeyType, name s
 	}
 
 	createdAt := m.now()
-	meta := keyMetadata{Type: keyType, Version: 1, CreatedAt: createdAt}
+	meta := keyMetadata{Type: keyType, Version: 1, CreatedAt: createdAt, Agreement: agreement}
 	if err := m.storeMetadataLocked(name, meta); err != nil {
 		return nil, err
 	}
@@ -90,7 +99,7 @@ func (m *Manager) RotateKey(ctx context.Context, keyID string) (*keyring.Key, er
 	case keyring.KeyTypeRSA4096:
 		err = m.createRSAKeyLocked(keyID, nextVersion)
 	case keyring.KeyTypeECDSAP256:
-		err = m.createECDSAKeyLocked(keyID, nextVersion)
+		err = m.createECDSAKeyLocked(keyID, nextVersion, meta.Agreement)
 	default:
 		err = fmt.Errorf("%w: %s", keyring.ErrUnsupportedKeyType, meta.Type)
 	}
@@ -302,7 +311,7 @@ func (m *Manager) createRSAKeyLocked(name string, version int) error {
 	return nil
 }
 
-func (m *Manager) createECDSAKeyLocked(name string, version int) error {
+func (m *Manager) createECDSAKeyLocked(name string, version int, agreement bool) error {
 	_, _, err := m.ctx.GenerateKeyPair(m.session,
 		[]*pkcs11lib.Mechanism{pkcs11lib.NewMechanism(pkcs11lib.CKM_EC_KEY_PAIR_GEN, nil)},
 		[]*pkcs11lib.Attribute{
@@ -321,6 +330,7 @@ func (m *Manager) createECDSAKeyLocked(name string, version int) error {
 			pkcs11lib.NewAttribute(pkcs11lib.CKA_SENSITIVE, true),
 			pkcs11lib.NewAttribute(pkcs11lib.CKA_EXTRACTABLE, false),
 			pkcs11lib.NewAttribute(pkcs11lib.CKA_SIGN, true),
+			pkcs11lib.NewAttribute(pkcs11lib.CKA_DERIVE, agreement),
 			pkcs11lib.NewAttribute(pkcs11lib.CKA_LABEL, privateKeyManel(name, version)),
 		})
 	if err != nil {

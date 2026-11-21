@@ -96,7 +96,7 @@ func decodeECPoint(value []byte) ([]byte, error) {
 	if len(value) == 0 {
 		return nil, fmt.Errorf("pkcs11: empty EC point")
 	}
-	if value[0] == 0x04 {
+	if len(value) == 65 && value[0] == 0x04 {
 		return value, nil
 	}
 	var point []byte
