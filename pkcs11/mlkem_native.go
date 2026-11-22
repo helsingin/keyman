@@ -27,12 +27,12 @@ typedef struct { word type; void *params; word size; } mechanism;
 typedef word (*enc_fn)(word, mechanism*, word, attribute*, word, unsigned char*, word*, word*);
 typedef word (*dec_fn)(word, mechanism*, word, attribute*, word, unsigned char*, word, word*);
 
-static word kem_call(const char *path, int encapsulate, word session, word key,
+static word kem_call(const char *path, int encapsulate, int wrapping, word session, word key,
                      unsigned char *ciphertext, word *length, word *secret) {
     void *module = open_module(path);
     if (!module) return 0x5; // CKR_GENERAL_ERROR
     mechanism mech = {0x17, NULL, 0}; // CKM_ML_KEM
-    word object_class = 4, key_type = 0x10; // CKO_SECRET_KEY, CKK_GENERIC_SECRET
+    word object_class = 4, key_type = wrapping ? 0x1f : 0x10; // CKK_AES or CKK_GENERIC_SECRET
     unsigned char yes = 1, no = 0;
     attribute attrs[] = {
         {0, &object_class, sizeof(word)}, {0x100, &key_type, sizeof(word)},
@@ -40,7 +40,9 @@ static word kem_call(const char *path, int encapsulate, word session, word key,
         {2, &yes, 1},       // CKA_PRIVATE
         {0x103, &yes, 1},   // CKA_SENSITIVE
         {0x162, &no, 1},    // CKA_EXTRACTABLE
-        {0x108, &yes, 1}    // CKA_SIGN (confirmation HMAC)
+        {0x108, wrapping ? &no : &yes, 1}, // CKA_SIGN (confirmation HMAC)
+        {0x106, wrapping ? &yes : &no, 1}, // CKA_WRAP
+        {0x107, wrapping ? &yes : &no, 1}  // CKA_UNWRAP
     };
     word count = sizeof(attrs) / sizeof(attrs[0]);
     word rv = 0x54; // CKR_FUNCTION_NOT_SUPPORTED
@@ -66,6 +68,10 @@ import (
 )
 
 func (m *Manager) nativeKEMLocked(encapsulate bool, key p11.ObjectHandle, ciphertext []byte) (p11.ObjectHandle, error) {
+	return m.kemResultLocked(encapsulate, false, key, ciphertext)
+}
+
+func (m *Manager) kemResultLocked(encapsulate, wrapping bool, key p11.ObjectHandle, ciphertext []byte) (p11.ObjectHandle, error) {
 	if len(ciphertext) != mlkem.CiphertextSize768 {
 		return 0, errors.New("invalid ML-KEM-768 ciphertext length")
 	}
@@ -76,8 +82,12 @@ func (m *Manager) nativeKEMLocked(encapsulate bool, key p11.ObjectHandle, cipher
 		mode = 1
 	}
 	var secret C.word
+	var wrap C.int
+	if wrapping {
+		wrap = 1
+	}
 	length := C.word(len(ciphertext))
-	rv := C.kem_call(path, mode, C.word(m.session), C.word(key), (*C.uchar)(&ciphertext[0]), &length, &secret)
+	rv := C.kem_call(path, mode, wrap, C.word(m.session), C.word(key), (*C.uchar)(&ciphertext[0]), &length, &secret)
 	if rv != 0 {
 		return 0, p11.Error(rv)
 	}
