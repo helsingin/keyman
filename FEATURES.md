@@ -8,11 +8,11 @@
 | Management console | BlueprintJS TypeScript console for PKCS#11 session login, key inventory, key rotation, certificate issuance, TPM2 status, PCR reads, and lifecycle runs |
 | PKI | Self-signed X.509 certificate creation using an HSM-resident private key |
 | Certificates | PKCS#11 certificate object storage with subject, issuer, serial, key ID, and DER value attributes |
-| Key management | AES-256-GCM, RSA-4096, and ECDSA P-256 key creation with metadata and versioning |
+| Key management | AES-256-GCM, RSA-4096, ECDSA P-256, and ML-DSA-65 key creation with metadata and versioning |
 | P-256 agreement | `CreateP256SigningAndAgreementKey` enables signing and ECDH for one token key. `ECDH` returns a 32-byte shared secret. The private key stays inside the token. Rotation preserves the permitted uses. |
 | Private key protection | Secret and private key templates use sensitive, non-extractable key attributes |
 | HSM integration | SoftHSM-backed PKCS#11 integration test suite using a containerized token |
-| PKCS#11 | Token discovery, session login, object lookup, key generation, AES-GCM, RSA/ECDSA signing, certificate objects |
+| PKCS#11 | Token discovery, session login, object lookup, key generation, AES-GCM, RSA/ECDSA/ML-DSA-65 signing, certificate objects |
 | Rotation | Old decrypt versions remain available while new encryption uses the latest version |
 | TLS | `crypto.Signer` adapter and managed TLS certificate loading for HSM-backed handshakes |
 | OpenSSL | Standard X.509 certificate objects and conventional PKCS#11 object templates; command-line interop examples are planned |
@@ -51,7 +51,7 @@ The TPM2 console demo runs this flow against `swtpm` or another configured TCTI:
 - `pkcs11/manager.go`: token/session lifecycle
 - `pkcs11/keys.go`: key generation and rotation
 - `pkcs11/aes.go`: AES-GCM encryption with key version metadata
-- `pkcs11/sign.go`: RSA/ECDSA signing plus `crypto.Signer`
+- `pkcs11/sign.go`: RSA/ECDSA/ML-DSA-65 signing plus `crypto.Signer`
 - `pkcs11/certificate.go`: certificate creation and PKCS#11 object storage
 - `pkcs11/certificates.go`: certificate inventory
 - `tpm2/client.go`: TPM2 command adapter

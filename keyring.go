@@ -11,6 +11,7 @@ import (
 type KeyType string
 
 const (
+	KeyTypeMLDSA65   KeyType = "ml-dsa-65"
 	KeyTypeAES256GCM KeyType = "aes-256-gcm"
 	KeyTypeRSA4096   KeyType = "rsa-4096"
 	KeyTypeECDSAP256 KeyType = "ecdsa-p256"

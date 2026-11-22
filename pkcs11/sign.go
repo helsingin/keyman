@@ -19,7 +19,7 @@ type ecdsaSignature struct {
 	S *big.Int
 }
 
-// Sign signs a digest with the latest version of an asymmetric key.
+// Sign signs a digest for RSA/ECDSA or the original message for pure ML-DSA-65.
 func (m *Manager) Sign(ctx context.Context, keyID string, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	if err := checkContext(ctx); err != nil {
 		return nil, err
@@ -38,7 +38,7 @@ func (m *Manager) Sign(ctx context.Context, keyID string, digest []byte, opts cr
 	return m.signManagedLocked(keyID, meta, digest, opts)
 }
 
-// Verify verifies a digest signature with the latest version of an asymmetric key.
+// Verify checks the signature against the same input and options as Sign.
 func (m *Manager) Verify(ctx context.Context, keyID string, digest []byte, signature []byte, opts crypto.SignerOpts) error {
 	if err := checkContext(ctx); err != nil {
 		return err
@@ -63,6 +63,13 @@ func (m *Manager) Verify(ctx context.Context, keyID string, digest []byte, signa
 	)
 
 	switch meta.Type {
+	case keyring.KeyTypeMLDSA65:
+		if err := requireHash(opts, 0); err != nil {
+			return err
+		}
+		mechanism = pkcs11lib.NewMechanism(ckmMLDSA, nil)
+		payload, sig = digest, signature
+		label = publicKeyManel(keyID, meta.Version)
 	case keyring.KeyTypeRSA4096:
 		payload, err = digestInfo(digest, opts)
 		if err != nil {
@@ -111,15 +118,12 @@ func (m *Manager) signManagedLocked(keyID string, meta keyMetadata, digest []byt
 			return nil, err
 		}
 		return m.signWithHandleLocked(keyring.KeyTypeRSA4096, keyHandle, payload, opts)
-	case keyring.KeyTypeECDSAP256:
-		if err := requireHash(opts, crypto.SHA256); err != nil {
-			return nil, err
-		}
+	case keyring.KeyTypeECDSAP256, keyring.KeyTypeMLDSA65:
 		keyHandle, err := m.findOneLocked(pkcs11lib.CKO_PRIVATE_KEY, privateKeyManel(keyID, meta.Version), false)
 		if err != nil {
 			return nil, err
 		}
-		return m.signWithHandleLocked(keyring.KeyTypeECDSAP256, keyHandle, digest, opts)
+		return m.signWithHandleLocked(meta.Type, keyHandle, digest, opts)
 	default:
 		return nil, fmt.Errorf("%w: signing not supported for %s", keyring.ErrUnsupportedKeyType, meta.Type)
 	}
@@ -128,6 +132,11 @@ func (m *Manager) signManagedLocked(keyID string, meta keyMetadata, digest []byt
 func (m *Manager) signWithHandleLocked(keyType keyring.KeyType, keyHandle pkcs11lib.ObjectHandle, payload []byte, opts crypto.SignerOpts) ([]byte, error) {
 	var mechanism *pkcs11lib.Mechanism
 	switch keyType {
+	case keyring.KeyTypeMLDSA65:
+		if err := requireHash(opts, 0); err != nil {
+			return nil, err
+		}
+		mechanism = pkcs11lib.NewMechanism(ckmMLDSA, nil)
 	case keyring.KeyTypeRSA4096:
 		mechanism = pkcs11lib.NewMechanism(pkcs11lib.CKM_RSA_PKCS, nil)
 	case keyring.KeyTypeECDSAP256:
@@ -168,7 +177,11 @@ func (m *Manager) Signer(ctx context.Context, keyID string, publicKey crypto.Pub
 	if err != nil {
 		return nil, err
 	}
-	if meta.Type != keyring.KeyTypeRSA4096 && meta.Type != keyring.KeyTypeECDSAP256 {
+	return m.signerLocked(keyID, meta, publicKey)
+}
+
+func (m *Manager) signerLocked(keyID string, meta keyMetadata, publicKey crypto.PublicKey) (*Signer, error) {
+	if meta.Type != keyring.KeyTypeRSA4096 && meta.Type != keyring.KeyTypeECDSAP256 && meta.Type != keyring.KeyTypeMLDSA65 {
 		return nil, fmt.Errorf("%w: signer requires asymmetric key, got %s", keyring.ErrUnsupportedKeyType, meta.Type)
 	}
 	keyHandle, err := m.findOneLocked(pkcs11lib.CKO_PRIVATE_KEY, privateKeyManel(keyID, meta.Version), false)
@@ -181,11 +194,23 @@ func (m *Manager) Signer(ctx context.Context, keyID string, publicKey crypto.Pub
 // ManagedSigner returns a crypto.Signer for a managed asymmetric key and reads
 // the matching public key from the token.
 func (m *Manager) ManagedSigner(ctx context.Context, keyID string) (*Signer, error) {
-	publicKey, err := m.PublicKey(ctx, keyID)
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.ensureOpen(); err != nil {
+		return nil, err
+	}
+	meta, err := m.getMetadataLocked(keyID)
 	if err != nil {
 		return nil, err
 	}
-	return m.Signer(ctx, keyID, publicKey)
+	publicKey, err := m.publicKeyLocked(keyID, meta)
+	if err != nil {
+		return nil, err
+	}
+	return m.signerLocked(keyID, meta, publicKey)
 }
 
 // Signer adapts a PKCS#11 private key handle to crypto.Signer.

@@ -55,6 +55,10 @@ func (m *Manager) createKey(ctx context.Context, keyType keyring.KeyType, name s
 		if err := m.createRSAKeyLocked(name, 1); err != nil {
 			return nil, err
 		}
+	case keyring.KeyTypeMLDSA65:
+		if err := m.createMLDSA65KeyLocked(name, 1); err != nil {
+			return nil, err
+		}
 	case keyring.KeyTypeECDSAP256:
 		if err := m.createECDSAKeyLocked(name, 1, agreement); err != nil {
 			return nil, err
@@ -100,6 +104,8 @@ func (m *Manager) RotateKey(ctx context.Context, keyID string) (*keyring.Key, er
 		err = m.createRSAKeyLocked(keyID, nextVersion)
 	case keyring.KeyTypeECDSAP256:
 		err = m.createECDSAKeyLocked(keyID, nextVersion, meta.Agreement)
+	case keyring.KeyTypeMLDSA65:
+		err = m.createMLDSA65KeyLocked(keyID, nextVersion)
 	default:
 		err = fmt.Errorf("%w: %s", keyring.ErrUnsupportedKeyType, meta.Type)
 	}
@@ -246,7 +252,7 @@ func (m *Manager) DeleteKey(ctx context.Context, keyID string) error {
 			if err := m.destroyIfExistsLocked(pkcs11lib.CKO_SECRET_KEY, keyLabel(keyID, version), false); err != nil {
 				return err
 			}
-		case keyring.KeyTypeRSA4096, keyring.KeyTypeECDSAP256:
+		case keyring.KeyTypeRSA4096, keyring.KeyTypeECDSAP256, keyring.KeyTypeMLDSA65:
 			if err := m.destroyIfExistsLocked(pkcs11lib.CKO_PUBLIC_KEY, publicKeyManel(keyID, version), false); err != nil {
 				return err
 			}

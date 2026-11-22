@@ -116,11 +116,11 @@ management console.
 
 `keyman` handles common protected-key workflows:
 
-- Creates non-extractable AES-256-GCM, RSA-4096, and ECDSA P-256 keys.
+- Creates non-extractable AES-256-GCM, RSA-4096, ECDSA P-256, and ML-DSA-65 keys.
 - Stores key metadata alongside PKCS#11 objects.
 - Rotates AES keys while preserving older decrypt versions.
 - Encrypts and decrypts with versioned AES-GCM keys.
-- Signs and verifies payloads with HSM-backed RSA and ECDSA keys.
+- Signs and verifies payloads with HSM-backed RSA, ECDSA, and ML-DSA-65 keys.
 - Exposes HSM-backed keys through Go's `crypto.Signer` interface.
 - Creates self-signed X.509 certificates using HSM-resident private keys.
 - Creates CSRs from stored HSM keys.
@@ -243,6 +243,32 @@ machine-authentication workflows.
 Create a non-extractable signing key and demonstrate signing without exposing
 the private key material to the application.
 
+## ML-DSA-65 signing
+
+Both Keyman container images build upstream SoftHSM with OpenSSL 3.5 and ML-DSA enabled. The source revision and build options are in [the shared build script](build/build-softhsm.sh). An external token must support the PKCS#11 mechanisms `CKM_ML_DSA_KEY_PAIR_GEN` and `CKM_ML_DSA` with parameter set `CKP_ML_DSA_65`. Key generation and signing run on the token. The private key is sensitive and non-extractable.
+
+With an open `*pkcs11.Manager`, pass the original message and `crypto.Hash(0)` to sign using pure ML-DSA-65 with the empty FIPS 204 context.
+
+```go
+key, err := manager.CreateKey(ctx, keyring.KeyTypeMLDSA65, "release-signing")
+if err != nil {
+    return err
+}
+signer, err := manager.ManagedSigner(ctx, key.ID)
+if err != nil {
+    return err
+}
+signature, err := signer.Sign(nil, message, crypto.Hash(0))
+if err != nil {
+    return err
+}
+return manager.Verify(ctx, key.ID, message, signature, crypto.Hash(0))
+```
+
+`signer.Public().(pkcs11.MLDSA65PublicKey)` contains the 1,952-byte FIPS 204 public key. Each signature is 3,309 bytes. Save the public key and its version to verify messages after rotation. A managed signer binds to the version selected when it is opened. Manager-level `Sign`, `PublicKey`, and `Verify` select the latest version on each call. The X.509, CSR, and TLS workflows use RSA or ECDSA.
+
+Run `CONTAINER_RUNTIME=container make test-integration` on a Mac with Apple Container. The suite exercises token signing, rotation, and private-key export rejection. It also verifies a token signature using the separate [pqc](https://github.com/helsingin/pqc) library with just the public key.
+
 ## PKCS#11 Backend
 
 The PKCS#11 backend currently supports:
@@ -250,12 +276,12 @@ The PKCS#11 backend currently supports:
 - Module loading and token discovery.
 - Session login by token label.
 - AES-256-GCM secret-key generation.
-- RSA-4096 and ECDSA P-256 private-key generation.
+- RSA-4096, ECDSA P-256, and ML-DSA-65 private-key generation.
 - Sensitive, non-extractable object templates.
 - Key metadata object storage.
 - AES-GCM encrypt/decrypt with key version metadata.
 - Key rotation with old decrypt versions retained.
-- RSA and ECDSA signing.
+- RSA and ECDSA digest signing and pure ML-DSA-65 message signing.
 - Signature verification using public-key material.
 - `crypto.Signer` adapter for HSM-backed TLS use.
 - Self-signed X.509 certificate creation.
@@ -416,7 +442,7 @@ while keeping private key material inside the backend boundary.
 - `pkcs11/manager.go`: PKCS#11 module, token, and session lifecycle.
 - `pkcs11/keys.go`: key generation, lookup, metadata, rotation, and deletion.
 - `pkcs11/aes.go`: AES-GCM encryption with key version metadata.
-- `pkcs11/sign.go`: RSA/ECDSA signing and `crypto.Signer` support.
+- `pkcs11/sign.go`: RSA, ECDSA, and ML-DSA-65 signing and `crypto.Signer` support.
 - `pkcs11/certificate.go`: certificate creation, CSR creation, and import.
 - `pkcs11/certificates.go`: certificate inventory.
 - `pkcs11/tls.go`: managed TLS certificate loading.
@@ -467,6 +493,7 @@ The integration suite exercises:
 9. Self-signed X.509 certificate creation.
 10. PKCS#11 certificate object storage.
 11. TLS certificate loading with an HSM-backed `crypto.Signer`.
+12. ML-DSA-65 token key lifecycle and independent signature verification.
 
 ## Container
 
