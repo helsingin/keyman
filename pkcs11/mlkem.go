@@ -73,11 +73,7 @@ func (m *Manager) EncapsulateMLKEM768Proof(ctx context.Context, peer *mlkem.Enca
 	if err := errors.Join(checkContext(ctx), m.ensureOpen()); err != nil {
 		return nil, nil, err
 	}
-	pub, err := m.ctx.CreateObject(m.session, []*p11.Attribute{
-		p11.NewAttribute(p11.CKA_CLASS, p11.CKO_PUBLIC_KEY), p11.NewAttribute(p11.CKA_KEY_TYPE, ckkMLKEM),
-		p11.NewAttribute(ckaParameterSet, ckpMLKEM768), p11.NewAttribute(ckaEncapsulate, true),
-		p11.NewAttribute(p11.CKA_TOKEN, false), p11.NewAttribute(p11.CKA_VALUE, peer.Bytes()),
-	})
+	pub, err := m.importKEMPeerLocked(peer)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -93,6 +89,14 @@ func (m *Manager) EncapsulateMLKEM768Proof(ctx context.Context, peer *mlkem.Enca
 	}
 	tag, err = m.confirmKEMLocked(secret, ct)
 	return ct, tag, err
+}
+
+func (m *Manager) importKEMPeerLocked(peer *mlkem.EncapsulationKey768) (p11.ObjectHandle, error) {
+	return m.ctx.CreateObject(m.session, []*p11.Attribute{
+		p11.NewAttribute(p11.CKA_CLASS, p11.CKO_PUBLIC_KEY), p11.NewAttribute(p11.CKA_KEY_TYPE, ckkMLKEM),
+		p11.NewAttribute(ckaParameterSet, ckpMLKEM768), p11.NewAttribute(ckaEncapsulate, true),
+		p11.NewAttribute(p11.CKA_TOKEN, false), p11.NewAttribute(p11.CKA_VALUE, peer.Bytes()),
+	})
 }
 
 // DecapsulateMLKEM768Proof confirms a ciphertext using a managed non-extractable key.

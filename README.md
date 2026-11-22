@@ -277,6 +277,12 @@ The PKCS#11 module must support ML-KEM-768 generation and export the v3.2 entry 
 
 ## PKCS#11 Backend
 
+### Transferring independent AES keys between tokens
+
+`WrapKeyBatch` encapsulates to a fresh ML-KEM-768 recipient, uses the 256-bit result exclusively for RFC 3394 AES key wrap and generates each traffic key independently inside the token. Both `WrapKeyBatch` and `UnwrapKeyBatch` install the traffic keys as sensitive, non-extractable AES-256 objects. They close their temporary PKCS#11 sessions before returning. The final wrapped key computes two AES-CMAC confirmation tags over the SHA-384 transcript and a role byte. It is discarded with the session. No raw key crosses the Go API.
+
+The caller supplies the authenticated offer digest and fresh, ordered names, journals all staged names before starting, authenticates the peer and verifies its confirmation, retires the temporary decapsulation key, and activates the batch only after those operations succeed. A failed or interrupted import may have installed a prefix. Retire all staged names with `DeleteKey`, treating `ErrKeyNotFound` as already retired, before starting a fresh exchange.
+
 The PKCS#11 backend currently supports:
 
 - Module loading and token discovery.
