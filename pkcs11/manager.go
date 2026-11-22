@@ -14,9 +14,10 @@ import (
 
 // Manager stores and operates keys through a PKCS#11 token.
 type Manager struct {
-	ctx      *pkcs11lib.Ctx
-	session  pkcs11lib.SessionHandle
-	appLabel string
+	ctx        *pkcs11lib.Ctx
+	session    pkcs11lib.SessionHandle
+	appLabel   string
+	modulePath string
 
 	mu     sync.Mutex
 	closed bool
@@ -55,9 +56,10 @@ func New(cfg Config) (*Manager, error) {
 	}
 
 	return &Manager{
-		ctx:      p,
-		session:  session,
-		appLabel: cfg.applicationLabel(),
+		ctx:        p,
+		session:    session,
+		appLabel:   cfg.applicationLabel(),
+		modulePath: strings.TrimSpace(cfg.ModulePath),
 	}, nil
 }
 

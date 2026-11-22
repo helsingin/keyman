@@ -205,6 +205,8 @@ func (m *Manager) matchCertificateKeyLocked(cert *x509.Certificate) (string, err
 
 func (m *Manager) publicKeyLocked(keyID string, meta keyMetadata) (any, error) {
 	switch meta.Type {
+	case keyring.KeyTypeMLKEM768:
+		return m.mlKEM768PublicKeyLocked(keyID, meta.Version)
 	case keyring.KeyTypeRSA4096:
 		return m.rsaPublicKeyLocked(keyID, meta.Version)
 	case keyring.KeyTypeECDSAP256:
