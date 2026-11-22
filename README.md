@@ -116,7 +116,7 @@ management console.
 
 `keyman` handles common protected-key workflows:
 
-- Creates non-extractable AES-256-GCM, RSA-4096, ECDSA P-256, and ML-DSA-65 keys.
+- Creates non-extractable AES-256-GCM, RSA-4096, ECDSA P-256, ML-DSA-65 and ML-KEM-768 keys.
 - Stores key metadata alongside PKCS#11 objects.
 - Rotates AES keys while preserving older decrypt versions.
 - Encrypts and decrypts with versioned AES-GCM keys.
@@ -269,6 +269,12 @@ return manager.Verify(ctx, key.ID, message, signature, crypto.Hash(0))
 
 Run `CONTAINER_RUNTIME=container make test-integration` on a Mac with Apple Container. The suite exercises token signing, rotation, and private-key export rejection. It also verifies a token signature using the separate [pqc](https://github.com/helsingin/pqc) library with just the public key.
 
+## ML-KEM-768 token capability
+
+Create a temporary decapsulation key with `CreateKey(ctx, keyring.KeyTypeMLKEM768, name)`. `PublicKey` returns a Go `*mlkem.EncapsulationKey768`. `EncapsulateMLKEM768Proof` takes a peer public key and returns a 1,088-byte ciphertext and a 32-byte confirmation tag. `DecapsulateMLKEM768Proof` takes the key name and ciphertext and returns the matching tag. Call `DeleteKey` to destroy the pair. Use a fresh name for each independent key.
+
+The PKCS#11 module must support ML-KEM-768 generation and export the v3.2 entry points `C_EncapsulateKey` and `C_DecapsulateKey`. The token computes HMAC-SHA-256 over the ASCII string `Keyman ML-KEM-768 confirmation v1`, one zero byte and the ciphertext. The derived secret is a sensitive, non-extractable session object. Keyman destroys it after computing the tag. These operations prove agreement. Applications still need an authenticated exchange and a key schedule to encrypt traffic.
+
 ## PKCS#11 Backend
 
 The PKCS#11 backend currently supports:
@@ -276,7 +282,7 @@ The PKCS#11 backend currently supports:
 - Module loading and token discovery.
 - Session login by token label.
 - AES-256-GCM secret-key generation.
-- RSA-4096, ECDSA P-256, and ML-DSA-65 private-key generation.
+- RSA-4096, ECDSA P-256, ML-DSA-65 and ML-KEM-768 private-key generation.
 - Sensitive, non-extractable object templates.
 - Key metadata object storage.
 - AES-GCM encrypt/decrypt with key version metadata.

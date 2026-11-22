@@ -17,7 +17,12 @@ ENV PKCS11_PIN=1234
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
-COPY . .
+COPY *.go ./
+COPY pkcs11/*.go ./pkcs11/
+COPY cmd/keyman/*.go ./cmd/keyman/
+COPY cmd/keymand/*.go ./cmd/keymand/
+COPY tpm2/*.go ./tpm2/
+COPY tests/pqc/go.mod tests/pqc/go.sum tests/pqc/*.go ./tests/pqc/
 RUN cd tests/pqc && go mod download
 
 CMD ["sh", "-ec", "go test -v -tags=integration ./... && cd tests/pqc && go test -v ./..."]

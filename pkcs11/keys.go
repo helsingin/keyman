@@ -46,6 +46,19 @@ func (m *Manager) createKey(ctx context.Context, keyType keyring.KeyType, name s
 		return nil, err
 	}
 
+	if keyType == keyring.KeyTypeMLKEM768 {
+		// Persist the cleanup record first. Even a process exit immediately
+		// after generation leaves DeleteKey enough information to retire it.
+		created := m.now()
+		if err := m.storeMetadataLocked(name, keyMetadata{Type: keyType, Version: 1, CreatedAt: created}); err != nil {
+			return nil, err
+		}
+		if err := m.createMLKEM768KeyLocked(name, 1); err != nil {
+			return nil, errors.Join(err, m.destroyIfExistsLocked(pkcs11lib.CKO_DATA, metadataLabel(name), true))
+		}
+		return &keyring.Key{ID: name, Name: name, Type: keyType, Version: 1, CreatedAt: created}, nil
+	}
+
 	switch keyType {
 	case keyring.KeyTypeAES256GCM:
 		if err := m.createAESKeyLocked(name, 1); err != nil {
@@ -250,6 +263,14 @@ func (m *Manager) DeleteKey(ctx context.Context, keyID string) error {
 		switch meta.Type {
 		case keyring.KeyTypeAES256GCM:
 			if err := m.destroyIfExistsLocked(pkcs11lib.CKO_SECRET_KEY, keyLabel(keyID, version), false); err != nil {
+				return err
+			}
+		case keyring.KeyTypeMLKEM768:
+			// Retire the decapsulation capability before its public object.
+			if err := m.destroyIfExistsLocked(pkcs11lib.CKO_PRIVATE_KEY, privateKeyManel(keyID, version), false); err != nil {
+				return err
+			}
+			if err := m.destroyIfExistsLocked(pkcs11lib.CKO_PUBLIC_KEY, publicKeyManel(keyID, version), false); err != nil {
 				return err
 			}
 		case keyring.KeyTypeRSA4096, keyring.KeyTypeECDSAP256, keyring.KeyTypeMLDSA65:
