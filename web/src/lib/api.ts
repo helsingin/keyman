@@ -9,7 +9,7 @@ export interface Health {
   error?: string
 }
 
-export type KeyType = 'aes-256-gcm' | 'rsa-4096' | 'ecdsa-p256'
+export type KeyType = 'aes-256-gcm' | 'rsa-4096' | 'ecdsa-p256' | 'ml-dsa-65'
 
 export interface KeyMetadata {
   id: string

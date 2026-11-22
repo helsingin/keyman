@@ -1,5 +1,9 @@
 # syntax=docker/dockerfile:1.7
 
+FROM debian:trixie-slim AS softhsm
+COPY build/build-softhsm.sh /tmp/build-softhsm.sh
+RUN sh /tmp/build-softhsm.sh
+
 FROM node:24-bookworm AS web
 
 ENV COREPACK_HOME=/root/.cache/node/corepack
@@ -27,7 +31,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=1 go build -o /out/keymand ./cmd/keymand
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -36,9 +40,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     opensc \
-    softhsm2 \
+    libssl3t64 libsqlite3-0 \
     swtpm \
     tpm2-tools
+
+COPY --from=softhsm /opt/softhsm/ /
 
 RUN mkdir -p /var/lib/softhsm/tokens \
     && softhsm2-util --init-token --free --label "KEYMAN" --so-pin 1234 --pin 1234

@@ -65,6 +65,7 @@ interface CreatedAsset {
 const keyTypes: Array<{ label: string; value: KeyType }> = [
   { label: 'Encryption key (AES-256-GCM)', value: 'aes-256-gcm' },
   { label: 'Signing key (RSA-4096)', value: 'rsa-4096' },
+  { label: 'Signing key (ML-DSA-65)', value: 'ml-dsa-65' },
   { label: 'Signing key (ECDSA P-256)', value: 'ecdsa-p256' },
 ]
 
@@ -1779,6 +1780,8 @@ function friendlyKeyType(value: KeyType) {
       return 'AES data key'
     case 'rsa-4096':
       return 'RSA signing key'
+    case 'ml-dsa-65':
+      return 'ML-DSA-65 signing key'
     case 'ecdsa-p256':
       return 'ECDSA signing key'
     default:
@@ -1792,6 +1795,8 @@ function friendlyKeyDetails(value: KeyType) {
       return ['AES-GCM', '256-bit', 'Encryption']
     case 'rsa-4096':
       return ['RSA', '4096-bit', 'Signing']
+    case 'ml-dsa-65':
+      return ['ML-DSA-65', 'Post-quantum signing']
     case 'ecdsa-p256':
       return ['ECDSA P-256', '256-bit', 'Signing']
     default:

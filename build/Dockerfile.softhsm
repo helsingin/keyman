@@ -1,10 +1,11 @@
-FROM golang:1.24-bookworm
+FROM debian:trixie-slim AS softhsm
+COPY build/build-softhsm.sh /tmp/build-softhsm.sh
+RUN sh /tmp/build-softhsm.sh
 
-RUN apt-get update && apt-get install -y \
-    softhsm2 \
-    opensc \
-    libsofthsm2-dev \
-    && rm -rf /var/lib/apt/lists/*
+FROM golang:1.26-trixie
+
+RUN apt-get update && apt-get install -y --no-install-recommends opensc libssl3t64 libsqlite3-0 && rm -rf /var/lib/apt/lists/*
+COPY --from=softhsm /opt/softhsm/ /
 
 RUN mkdir -p /var/lib/softhsm/tokens
 RUN softhsm2-util --init-token --free --label "KEYMAN" --so-pin 1234 --pin 1234
@@ -17,5 +18,6 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+RUN cd tests/pqc && go mod download
 
-CMD ["go", "test", "-v", "-tags=integration", "./..."]
+CMD ["sh", "-ec", "go test -v -tags=integration ./... && cd tests/pqc && go test -v ./..."]

@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/helsingin/keyman"
 	pkcs11lib "github.com/miekg/pkcs11"
 )
 
@@ -31,14 +30,7 @@ func (m *Manager) PublicKey(ctx context.Context, keyID string) (crypto.PublicKey
 		return nil, err
 	}
 
-	switch meta.Type {
-	case keyring.KeyTypeRSA4096:
-		return m.rsaPublicKeyLocked(keyID, meta.Version)
-	case keyring.KeyTypeECDSAP256:
-		return m.ecdsaPublicKeyLocked(keyID, meta.Version)
-	default:
-		return nil, fmt.Errorf("%w: public key requires asymmetric key, got %s", keyring.ErrUnsupportedKeyType, meta.Type)
-	}
+	return m.publicKeyLocked(keyID, meta)
 }
 
 func (m *Manager) rsaPublicKeyLocked(keyID string, version int) (*rsa.PublicKey, error) {
