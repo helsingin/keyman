@@ -52,6 +52,13 @@ func TestTokenWrappedBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	sealed.KeyID = id + "-b"
+	opened, err := m.OpenWrappedMLKEM768(ctx, id, batch.Ciphertext, batch.Wrapped[0], sealed.Nonce, sealed.Ciphertext, sealed.AAD)
+	if err != nil || !bytes.Equal(opened, []byte("batch interop")) {
+		t.Fatalf("one-shot open: %v", err)
+	}
+	if _, err = m.OpenWrappedMLKEM768(ctx, id, batch.Ciphertext, batch.Wrapped[0], sealed.Nonce, sealed.Ciphertext, []byte("other")); err == nil {
+		t.Fatal("accepted different AAD")
+	}
 	got, err := m.Decrypt(ctx, sealed)
 	if err != nil || !bytes.Equal(got, []byte("batch interop")) {
 		t.Fatalf("open: %v", err)
