@@ -468,6 +468,10 @@ while keeping private key material inside the backend boundary.
 - `scripts/run-softhsm-tests.sh`: SoftHSM integration-test runner.
 - `build/Dockerfile`: single-container demo image.
 
+## Release numbering
+
+Use the next patch version for a small compatible change, including a single added token operation. Reserve minor releases for substantial new capabilities.
+
 ## Verification
 
 Run the Go unit tests:
