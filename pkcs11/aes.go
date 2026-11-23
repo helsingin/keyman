@@ -93,7 +93,11 @@ func (m *Manager) Decrypt(ctx context.Context, data *keyring.EncryptedData) ([]b
 		return nil, err
 	}
 
-	gcmParams := pkcs11lib.NewGCMParams(data.Nonce, data.AAD, 128)
+	return m.openGCM(keyHandle, data.Nonce, data.Ciphertext, data.AAD)
+}
+
+func (m *Manager) openGCM(keyHandle pkcs11lib.ObjectHandle, nonce, ciphertext, aad []byte) ([]byte, error) {
+	gcmParams := pkcs11lib.NewGCMParams(nonce, aad, 128)
 	defer gcmParams.Free()
 
 	if err := m.ctx.DecryptInit(m.session, []*pkcs11lib.Mechanism{
@@ -102,7 +106,7 @@ func (m *Manager) Decrypt(ctx context.Context, data *keyring.EncryptedData) ([]b
 		return nil, fmt.Errorf("pkcs11: AES-GCM decrypt init: %w", err)
 	}
 
-	plaintext, err := m.ctx.Decrypt(m.session, data.Ciphertext)
+	plaintext, err := m.ctx.Decrypt(m.session, ciphertext)
 	if err != nil {
 		return nil, fmt.Errorf("pkcs11: AES-GCM decrypt: %w", err)
 	}

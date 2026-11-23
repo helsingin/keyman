@@ -273,6 +273,8 @@ Run `CONTAINER_RUNTIME=container make test-integration` on a Mac with Apple Cont
 
 Create a temporary decapsulation key with `CreateKey(ctx, keyring.KeyTypeMLKEM768, name)`. `PublicKey` returns a Go `*mlkem.EncapsulationKey768`. `EncapsulateMLKEM768Proof` takes a peer public key and returns a 1,088-byte ciphertext and a 32-byte confirmation tag. `DecapsulateMLKEM768Proof` takes the key name and ciphertext and returns the matching tag. Call `DeleteKey` to destroy the pair. Use a fresh name for each independent key.
 
+`OpenWrappedMLKEM768` opens one AES-256-GCM record for an enrolled ML-KEM-768 recipient. The sender wraps a random 32-byte content key under the encapsulated secret using RFC 3394 AES-256 key wrap. Supply the 1,088-byte encapsulation, 40-byte wrapped key, 12-byte nonce, ciphertext including its 16-byte tag, and the associated data. The token decapsulates, unwraps and authenticates using temporary nonextractable session objects. Closing the operation releases both objects. The caller receives the authenticated plaintext and verifies the sender's signature when the application requires sender authentication.
+
 The PKCS#11 module must support ML-KEM-768 generation and export the v3.2 entry points `C_EncapsulateKey` and `C_DecapsulateKey`. The token computes HMAC-SHA-256 over the ASCII string `Keyman ML-KEM-768 confirmation v1`, one zero byte and the ciphertext. The derived secret is a sensitive, non-extractable session object. Keyman destroys it after computing the tag. These operations prove agreement. Applications still need an authenticated exchange and a key schedule to encrypt traffic.
 
 ## PKCS#11 Backend

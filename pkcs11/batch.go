@@ -47,6 +47,10 @@ func (m *Manager) batchSession(ctx context.Context, names []string) (*Manager, e
 			return nil, err
 		}
 	}
+	return m.temporarySession()
+}
+
+func (m *Manager) temporarySession() (*Manager, error) {
 	info, err := m.ctx.GetSessionInfo(m.session)
 	if err != nil {
 		return nil, err
