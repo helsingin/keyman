@@ -14,7 +14,16 @@ import (
 // a 96-bit nonce and 128-bit tag. Both derived keys are nonextractable
 // session objects. The only application data returned is the plaintext.
 func (m *Manager) OpenWrappedMLKEM768(ctx context.Context, name string, kem, wrapped, nonce, ciphertext, aad []byte) (plaintext []byte, err error) {
-	if len(kem) != mlkem.CiphertextSize768 || len(wrapped) != 40 || len(nonce) != 12 || len(ciphertext) < 16 {
+	return m.openWrapped(ctx, name, keyring.KeyTypeMLKEM768, mlkem.CiphertextSize768, kem, wrapped, nonce, ciphertext, aad)
+}
+
+// OpenWrappedMLKEM1024 opens an AES-256-KW and AES-GCM envelope inside the token.
+func (m *Manager) OpenWrappedMLKEM1024(ctx context.Context, name string, kem, wrapped, nonce, ciphertext, aad []byte) ([]byte, error) {
+	return m.openWrapped(ctx, name, keyring.KeyTypeMLKEM1024, mlkem.CiphertextSize1024, kem, wrapped, nonce, ciphertext, aad)
+}
+
+func (m *Manager) openWrapped(ctx context.Context, name string, typ keyring.KeyType, size int, kem, wrapped, nonce, ciphertext, aad []byte) (plaintext []byte, err error) {
+	if len(kem) != size || len(wrapped) != 40 || len(nonce) != 12 || len(ciphertext) < 16 {
 		return nil, errors.New("invalid wrapped envelope dimensions")
 	}
 	m.mu.Lock()
@@ -37,7 +46,7 @@ func (m *Manager) OpenWrappedMLKEM768(ctx context.Context, name string, kem, wra
 	if err != nil {
 		return nil, err
 	}
-	if meta.Type != keyring.KeyTypeMLKEM768 {
+	if meta.Type != typ {
 		return nil, keyring.ErrUnsupportedKeyType
 	}
 	priv, err := s.findOneLocked(p11.CKO_PRIVATE_KEY, privateKeyManel(name, meta.Version), false)

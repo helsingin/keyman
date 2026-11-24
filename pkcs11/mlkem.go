@@ -64,10 +64,14 @@ func (m *Manager) confirmKEMLocked(secret p11.ObjectHandle, ciphertext []byte) (
 			err = errors.Join(err, destroyErr)
 		}
 	}()
+	domain := "Keyman ML-KEM-768 confirmation v1\x00"
+	if len(ciphertext) == mlkem.CiphertextSize1024 {
+		domain = "Keyman ML-KEM-1024 confirmation v1\x00"
+	}
 	if err := m.ctx.SignInit(m.session, []*p11.Mechanism{p11.NewMechanism(p11.CKM_SHA256_HMAC, nil)}, secret); err != nil {
 		return nil, err
 	}
-	return m.ctx.Sign(m.session, append([]byte("Keyman ML-KEM-768 confirmation v1\x00"), ciphertext...))
+	return m.ctx.Sign(m.session, append([]byte(domain), ciphertext...))
 }
 
 // EncapsulateMLKEM768Proof uses the token RNG and peer's public key. It returns
@@ -113,8 +117,18 @@ func (m *Manager) importKEMBytesLocked(raw []byte, params int) (p11.ObjectHandle
 
 // DecapsulateMLKEM768Proof confirms a ciphertext using a managed non-extractable key.
 func (m *Manager) DecapsulateMLKEM768Proof(ctx context.Context, name string, ciphertext []byte) ([]byte, error) {
-	if len(ciphertext) != mlkem.CiphertextSize768 {
-		return nil, errors.New("invalid ML-KEM-768 ciphertext length")
+	return m.decapsulateProof(ctx, name, ciphertext, keyring.KeyTypeMLKEM768, mlkem.CiphertextSize768)
+}
+
+// DecapsulateMLKEM1024Proof confirms possession using the 256-bit KEM shared
+// secret as an HMAC-SHA256 key with a parameter-set-specific domain.
+func (m *Manager) DecapsulateMLKEM1024Proof(ctx context.Context, name string, ciphertext []byte) ([]byte, error) {
+	return m.decapsulateProof(ctx, name, ciphertext, keyring.KeyTypeMLKEM1024, mlkem.CiphertextSize1024)
+}
+
+func (m *Manager) decapsulateProof(ctx context.Context, name string, ciphertext []byte, typ keyring.KeyType, size int) ([]byte, error) {
+	if len(ciphertext) != size {
+		return nil, errors.New("invalid ML-KEM ciphertext length")
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -125,7 +139,7 @@ func (m *Manager) DecapsulateMLKEM768Proof(ctx context.Context, name string, cip
 	if err != nil {
 		return nil, err
 	}
-	if meta.Type != keyring.KeyTypeMLKEM768 {
+	if meta.Type != typ {
 		return nil, keyring.ErrUnsupportedKeyType
 	}
 	private, err := m.findOneLocked(p11.CKO_PRIVATE_KEY, privateKeyManel(name, meta.Version), false)

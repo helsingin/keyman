@@ -6,7 +6,9 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/hmac"
 	"crypto/mlkem"
+	"crypto/sha256"
 	"errors"
 	"os"
 	"testing"
@@ -66,6 +68,25 @@ func TestCategory5PrivateObjects(t *testing.T) {
 			batch, sender, err := m.WrapKeyBatch1024(ctx, k.(*mlkem.EncapsulationKey1024), binding, []string{"sender-slot"})
 			if err != nil {
 				t.Fatal(err)
+			}
+			shared, challenge := k.(*mlkem.EncapsulationKey1024).Encapsulate()
+			expected := hmac.New(sha256.New, shared)
+			expected.Write([]byte("Keyman ML-KEM-1024 confirmation v1\x00"))
+			expected.Write(challenge)
+			tag, err := m.DecapsulateMLKEM1024Proof(ctx, id, challenge)
+			if err != nil || !hmac.Equal(tag, expected.Sum(nil)) {
+				t.Fatalf("key confirmation: %v", err)
+			}
+			record, err := m.Encrypt(ctx, "sender-slot", []byte("signed contact directory"), binding[:])
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, err := m.OpenWrappedMLKEM1024(ctx, id, batch.Ciphertext, batch.Wrapped[0], record.Nonce, record.Ciphertext, record.AAD)
+			if err != nil || !bytes.Equal(body, []byte("signed contact directory")) {
+				t.Fatalf("open directory: %v", err)
+			}
+			if _, err := m.OpenWrappedMLKEM768(ctx, id, batch.Ciphertext, batch.Wrapped[0], record.Nonce, record.Ciphertext, record.AAD); err == nil {
+				t.Fatal("incorrect envelope suite accepted")
 			}
 			receiver, err := m.UnwrapKeyBatch1024(ctx, id, binding, batch, []string{"receiver-slot"})
 			if err != nil || sender != receiver {
