@@ -205,14 +205,14 @@ func (m *Manager) matchCertificateKeyLocked(cert *x509.Certificate) (string, err
 
 func (m *Manager) publicKeyLocked(keyID string, meta keyMetadata) (any, error) {
 	switch meta.Type {
-	case keyring.KeyTypeMLKEM768:
-		return m.mlKEM768PublicKeyLocked(keyID, meta.Version)
+	case keyring.KeyTypeMLKEM768, keyring.KeyTypeMLKEM1024:
+		return m.mlKEMPublicKeyLocked(keyID, meta.Version, meta.Type)
 	case keyring.KeyTypeRSA4096:
 		return m.rsaPublicKeyLocked(keyID, meta.Version)
 	case keyring.KeyTypeECDSAP256:
 		return m.ecdsaPublicKeyLocked(keyID, meta.Version)
-	case keyring.KeyTypeMLDSA65:
-		return m.mlDSA65PublicKeyLocked(keyID, meta.Version)
+	case keyring.KeyTypeMLDSA65, keyring.KeyTypeMLDSA87:
+		return m.mlDSAPublicKeyLocked(keyID, meta.Version, meta.Type)
 	default:
 		return nil, fmt.Errorf("%w: public key requires asymmetric key, got %s", keyring.ErrUnsupportedKeyType, meta.Type)
 	}

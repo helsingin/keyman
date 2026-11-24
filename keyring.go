@@ -13,6 +13,8 @@ type KeyType string
 const (
 	KeyTypeMLKEM768  KeyType = "ml-kem-768"
 	KeyTypeMLDSA65   KeyType = "ml-dsa-65"
+	KeyTypeMLDSA87   KeyType = "ml-dsa-87"
+	KeyTypeMLKEM1024 KeyType = "ml-kem-1024"
 	KeyTypeAES256GCM KeyType = "aes-256-gcm"
 	KeyTypeRSA4096   KeyType = "rsa-4096"
 	KeyTypeECDSAP256 KeyType = "ecdsa-p256"

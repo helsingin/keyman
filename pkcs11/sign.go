@@ -63,7 +63,7 @@ func (m *Manager) Verify(ctx context.Context, keyID string, digest []byte, signa
 	)
 
 	switch meta.Type {
-	case keyring.KeyTypeMLDSA65:
+	case keyring.KeyTypeMLDSA65, keyring.KeyTypeMLDSA87:
 		if err := requireHash(opts, 0); err != nil {
 			return err
 		}
@@ -118,7 +118,7 @@ func (m *Manager) signManagedLocked(keyID string, meta keyMetadata, digest []byt
 			return nil, err
 		}
 		return m.signWithHandleLocked(keyring.KeyTypeRSA4096, keyHandle, payload, opts)
-	case keyring.KeyTypeECDSAP256, keyring.KeyTypeMLDSA65:
+	case keyring.KeyTypeECDSAP256, keyring.KeyTypeMLDSA65, keyring.KeyTypeMLDSA87:
 		keyHandle, err := m.findOneLocked(pkcs11lib.CKO_PRIVATE_KEY, privateKeyManel(keyID, meta.Version), false)
 		if err != nil {
 			return nil, err
@@ -132,7 +132,7 @@ func (m *Manager) signManagedLocked(keyID string, meta keyMetadata, digest []byt
 func (m *Manager) signWithHandleLocked(keyType keyring.KeyType, keyHandle pkcs11lib.ObjectHandle, payload []byte, opts crypto.SignerOpts) ([]byte, error) {
 	var mechanism *pkcs11lib.Mechanism
 	switch keyType {
-	case keyring.KeyTypeMLDSA65:
+	case keyring.KeyTypeMLDSA65, keyring.KeyTypeMLDSA87:
 		if err := requireHash(opts, 0); err != nil {
 			return nil, err
 		}
@@ -181,7 +181,7 @@ func (m *Manager) Signer(ctx context.Context, keyID string, publicKey crypto.Pub
 }
 
 func (m *Manager) signerLocked(keyID string, meta keyMetadata, publicKey crypto.PublicKey) (*Signer, error) {
-	if meta.Type != keyring.KeyTypeRSA4096 && meta.Type != keyring.KeyTypeECDSAP256 && meta.Type != keyring.KeyTypeMLDSA65 {
+	if meta.Type != keyring.KeyTypeRSA4096 && meta.Type != keyring.KeyTypeECDSAP256 && meta.Type != keyring.KeyTypeMLDSA65 && meta.Type != keyring.KeyTypeMLDSA87 {
 		return nil, fmt.Errorf("%w: signer requires asymmetric key, got %s", keyring.ErrUnsupportedKeyType, meta.Type)
 	}
 	keyHandle, err := m.findOneLocked(pkcs11lib.CKO_PRIVATE_KEY, privateKeyManel(keyID, meta.Version), false)

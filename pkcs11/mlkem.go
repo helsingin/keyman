@@ -14,14 +14,19 @@ const (
 	ckmMLKEMKeyPairGen = 0x0f
 	ckkMLKEM           = 0x49
 	ckpMLKEM768        = 2
+	ckpMLKEM1024       = 3
 	ckaEncapsulate     = 0x633
 	ckaDecapsulate     = 0x634
 )
 
-func (m *Manager) createMLKEM768KeyLocked(name string, version int) error {
+func (m *Manager) createMLKEMKeyLocked(name string, version int, typ keyring.KeyType) error {
+	params := ckpMLKEM768
+	if typ == keyring.KeyTypeMLKEM1024 {
+		params = ckpMLKEM1024
+	}
 	_, _, err := m.ctx.GenerateKeyPair(m.session, []*p11.Mechanism{p11.NewMechanism(ckmMLKEMKeyPairGen, nil)},
 		[]*p11.Attribute{
-			p11.NewAttribute(ckaParameterSet, ckpMLKEM768),
+			p11.NewAttribute(ckaParameterSet, params),
 			p11.NewAttribute(p11.CKA_TOKEN, true), p11.NewAttribute(ckaEncapsulate, true),
 			p11.NewAttribute(p11.CKA_LABEL, publicKeyManel(name, version)),
 		}, []*p11.Attribute{
@@ -32,7 +37,7 @@ func (m *Manager) createMLKEM768KeyLocked(name string, version int) error {
 	return err
 }
 
-func (m *Manager) mlKEM768PublicKeyLocked(name string, version int) (*mlkem.EncapsulationKey768, error) {
+func (m *Manager) mlKEMPublicKeyLocked(name string, version int, typ keyring.KeyType) (any, error) {
 	if _, err := m.findOneLocked(p11.CKO_PRIVATE_KEY, privateKeyManel(name, version), false); err != nil {
 		return nil, err
 	}
@@ -43,6 +48,9 @@ func (m *Manager) mlKEM768PublicKeyLocked(name string, version int) (*mlkem.Enca
 	raw, err := m.getValueLocked(h)
 	if err != nil {
 		return nil, err
+	}
+	if typ == keyring.KeyTypeMLKEM1024 {
+		return mlkem.NewEncapsulationKey1024(raw)
 	}
 	return mlkem.NewEncapsulationKey768(raw)
 }
@@ -92,10 +100,14 @@ func (m *Manager) EncapsulateMLKEM768Proof(ctx context.Context, peer *mlkem.Enca
 }
 
 func (m *Manager) importKEMPeerLocked(peer *mlkem.EncapsulationKey768) (p11.ObjectHandle, error) {
+	return m.importKEMBytesLocked(peer.Bytes(), ckpMLKEM768)
+}
+
+func (m *Manager) importKEMBytesLocked(raw []byte, params int) (p11.ObjectHandle, error) {
 	return m.ctx.CreateObject(m.session, []*p11.Attribute{
 		p11.NewAttribute(p11.CKA_CLASS, p11.CKO_PUBLIC_KEY), p11.NewAttribute(p11.CKA_KEY_TYPE, ckkMLKEM),
-		p11.NewAttribute(ckaParameterSet, ckpMLKEM768), p11.NewAttribute(ckaEncapsulate, true),
-		p11.NewAttribute(p11.CKA_TOKEN, false), p11.NewAttribute(p11.CKA_VALUE, peer.Bytes()),
+		p11.NewAttribute(ckaParameterSet, params), p11.NewAttribute(ckaEncapsulate, true),
+		p11.NewAttribute(p11.CKA_TOKEN, false), p11.NewAttribute(p11.CKA_VALUE, raw),
 	})
 }
 

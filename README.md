@@ -245,6 +245,8 @@ the private key material to the application.
 
 ## ML-DSA-65 signing
 
+The PKCS#11 Go API also supports ML-DSA-87 through `KeyTypeMLDSA87` and ML-KEM-1024 through `KeyTypeMLKEM1024`. Use `WrapKeyBatch1024` and `UnwrapKeyBatch1024` with a SHA-512 transcript binding for independent AES-256 traffic keys. The token retains the decapsulation and wrapping keys. The caller authenticates the exchange, checks both confirmation tags, and retires the temporary decapsulation key before using the batch.
+
 Both Keyman container images build upstream SoftHSM with OpenSSL 3.5 and ML-DSA enabled. The source revision and build options are in [the shared build script](build/build-softhsm.sh). An external token must support the PKCS#11 mechanisms `CKM_ML_DSA_KEY_PAIR_GEN` and `CKM_ML_DSA` with parameter set `CKP_ML_DSA_65`. Key generation and signing run on the token. The private key is sensitive and non-extractable.
 
 With an open `*pkcs11.Manager`, pass the original message and `crypto.Hash(0)` to sign using pure ML-DSA-65 with the empty FIPS 204 context.

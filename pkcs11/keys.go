@@ -46,14 +46,14 @@ func (m *Manager) createKey(ctx context.Context, keyType keyring.KeyType, name s
 		return nil, err
 	}
 
-	if keyType == keyring.KeyTypeMLKEM768 {
+	if keyType == keyring.KeyTypeMLKEM768 || keyType == keyring.KeyTypeMLKEM1024 {
 		// Persist the cleanup record first. Even a process exit immediately
 		// after generation leaves DeleteKey enough information to retire it.
 		created := m.now()
 		if err := m.storeMetadataLocked(name, keyMetadata{Type: keyType, Version: 1, CreatedAt: created}); err != nil {
 			return nil, err
 		}
-		if err := m.createMLKEM768KeyLocked(name, 1); err != nil {
+		if err := m.createMLKEMKeyLocked(name, 1, keyType); err != nil {
 			return nil, errors.Join(err, m.destroyIfExistsLocked(pkcs11lib.CKO_DATA, metadataLabel(name), true))
 		}
 		return &keyring.Key{ID: name, Name: name, Type: keyType, Version: 1, CreatedAt: created}, nil
@@ -68,8 +68,8 @@ func (m *Manager) createKey(ctx context.Context, keyType keyring.KeyType, name s
 		if err := m.createRSAKeyLocked(name, 1); err != nil {
 			return nil, err
 		}
-	case keyring.KeyTypeMLDSA65:
-		if err := m.createMLDSA65KeyLocked(name, 1); err != nil {
+	case keyring.KeyTypeMLDSA65, keyring.KeyTypeMLDSA87:
+		if err := m.createMLDSAKeyLocked(name, 1, keyType); err != nil {
 			return nil, err
 		}
 	case keyring.KeyTypeECDSAP256:
@@ -117,8 +117,8 @@ func (m *Manager) RotateKey(ctx context.Context, keyID string) (*keyring.Key, er
 		err = m.createRSAKeyLocked(keyID, nextVersion)
 	case keyring.KeyTypeECDSAP256:
 		err = m.createECDSAKeyLocked(keyID, nextVersion, meta.Agreement)
-	case keyring.KeyTypeMLDSA65:
-		err = m.createMLDSA65KeyLocked(keyID, nextVersion)
+	case keyring.KeyTypeMLDSA65, keyring.KeyTypeMLDSA87:
+		err = m.createMLDSAKeyLocked(keyID, nextVersion, meta.Type)
 	default:
 		err = fmt.Errorf("%w: %s", keyring.ErrUnsupportedKeyType, meta.Type)
 	}
@@ -265,7 +265,7 @@ func (m *Manager) DeleteKey(ctx context.Context, keyID string) error {
 			if err := m.destroyIfExistsLocked(pkcs11lib.CKO_SECRET_KEY, keyLabel(keyID, version), false); err != nil {
 				return err
 			}
-		case keyring.KeyTypeMLKEM768:
+		case keyring.KeyTypeMLKEM768, keyring.KeyTypeMLKEM1024:
 			// Retire the decapsulation capability before its public object.
 			if err := m.destroyIfExistsLocked(pkcs11lib.CKO_PRIVATE_KEY, privateKeyManel(keyID, version), false); err != nil {
 				return err
@@ -273,7 +273,7 @@ func (m *Manager) DeleteKey(ctx context.Context, keyID string) error {
 			if err := m.destroyIfExistsLocked(pkcs11lib.CKO_PUBLIC_KEY, publicKeyManel(keyID, version), false); err != nil {
 				return err
 			}
-		case keyring.KeyTypeRSA4096, keyring.KeyTypeECDSAP256, keyring.KeyTypeMLDSA65:
+		case keyring.KeyTypeRSA4096, keyring.KeyTypeECDSAP256, keyring.KeyTypeMLDSA65, keyring.KeyTypeMLDSA87:
 			if err := m.destroyIfExistsLocked(pkcs11lib.CKO_PUBLIC_KEY, publicKeyManel(keyID, version), false); err != nil {
 				return err
 			}

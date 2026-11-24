@@ -72,8 +72,8 @@ func (m *Manager) nativeKEMLocked(encapsulate bool, key p11.ObjectHandle, cipher
 }
 
 func (m *Manager) kemResultLocked(encapsulate, wrapping bool, key p11.ObjectHandle, ciphertext []byte) (p11.ObjectHandle, error) {
-	if len(ciphertext) != mlkem.CiphertextSize768 {
-		return 0, errors.New("invalid ML-KEM-768 ciphertext length")
+	if len(ciphertext) != mlkem.CiphertextSize768 && len(ciphertext) != mlkem.CiphertextSize1024 {
+		return 0, errors.New("invalid ML-KEM ciphertext length")
 	}
 	path := C.CString(m.modulePath)
 	defer C.free(unsafe.Pointer(path))
@@ -92,7 +92,7 @@ func (m *Manager) kemResultLocked(encapsulate, wrapping bool, key p11.ObjectHand
 		return 0, p11.Error(rv)
 	}
 	if int(length) != len(ciphertext) {
-		return 0, errors.Join(errors.New("unexpected ML-KEM-768 ciphertext size"), m.ctx.DestroyObject(m.session, p11.ObjectHandle(secret)))
+		return 0, errors.Join(errors.New("unexpected ML-KEM ciphertext size"), m.ctx.DestroyObject(m.session, p11.ObjectHandle(secret)))
 	}
 	return p11.ObjectHandle(secret), nil
 }

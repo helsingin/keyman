@@ -70,6 +70,18 @@ func (m *Manager) WrapKeyBatch(ctx context.Context, peer *mlkem.EncapsulationKey
 	if peer == nil {
 		return batch, tags, errors.New("missing KEM public key")
 	}
+	return m.wrapKeyBatch(ctx, peer.Bytes(), ckpMLKEM768, mlkem.CiphertextSize768, binding[:], names)
+}
+
+// WrapKeyBatch1024 establishes a batch with ML-KEM-1024 and a SHA-512 binding.
+func (m *Manager) WrapKeyBatch1024(ctx context.Context, peer *mlkem.EncapsulationKey1024, binding [64]byte, names []string) (WrappedKeyBatch, BatchTags, error) {
+	if peer == nil {
+		return WrappedKeyBatch{}, BatchTags{}, errors.New("missing KEM public key")
+	}
+	return m.wrapKeyBatch(ctx, peer.Bytes(), ckpMLKEM1024, mlkem.CiphertextSize1024, binding[:], names)
+}
+
+func (m *Manager) wrapKeyBatch(ctx context.Context, peer []byte, params, size int, binding []byte, names []string) (batch WrappedKeyBatch, tags BatchTags, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s, err := m.batchSession(ctx, names)
@@ -77,11 +89,11 @@ func (m *Manager) WrapKeyBatch(ctx context.Context, peer *mlkem.EncapsulationKey
 		return batch, tags, err
 	}
 	defer func() { err = errors.Join(err, s.ctx.CloseSession(s.session)) }()
-	pub, err := s.importKEMPeerLocked(peer)
+	pub, err := s.importKEMBytesLocked(peer, params)
 	if err != nil {
 		return batch, tags, err
 	}
-	batch.Ciphertext = make([]byte, mlkem.CiphertextSize768)
+	batch.Ciphertext = make([]byte, size)
 	kek, err := s.kemResultLocked(true, true, pub, batch.Ciphertext)
 	if err != nil {
 		return batch, tags, err
@@ -111,7 +123,16 @@ func (m *Manager) WrapKeyBatch(ctx context.Context, peer *mlkem.EncapsulationKey
 // authenticate the transcript, confirm the tags, and erase the decapsulation
 // key before activation. On interruption retire all journaled staged names.
 func (m *Manager) UnwrapKeyBatch(ctx context.Context, kem string, binding [48]byte, batch WrappedKeyBatch, names []string) (tags BatchTags, err error) {
-	if len(batch.Ciphertext) != mlkem.CiphertextSize768 || len(batch.Wrapped) != len(names)+1 {
+	return m.unwrapKeyBatch(ctx, kem, keyring.KeyTypeMLKEM768, mlkem.CiphertextSize768, binding[:], batch, names)
+}
+
+// UnwrapKeyBatch1024 installs a batch using its managed ML-KEM-1024 key.
+func (m *Manager) UnwrapKeyBatch1024(ctx context.Context, kem string, binding [64]byte, batch WrappedKeyBatch, names []string) (BatchTags, error) {
+	return m.unwrapKeyBatch(ctx, kem, keyring.KeyTypeMLKEM1024, mlkem.CiphertextSize1024, binding[:], batch, names)
+}
+
+func (m *Manager) unwrapKeyBatch(ctx context.Context, kem string, typ keyring.KeyType, size int, binding []byte, batch WrappedKeyBatch, names []string) (tags BatchTags, err error) {
+	if len(batch.Ciphertext) != size || len(batch.Wrapped) != len(names)+1 {
 		return tags, errors.New("invalid batch dimensions")
 	}
 	for _, key := range batch.Wrapped {
@@ -130,7 +151,7 @@ func (m *Manager) UnwrapKeyBatch(ctx context.Context, kem string, binding [48]by
 	if err != nil {
 		return tags, err
 	}
-	if meta.Type != keyring.KeyTypeMLKEM768 {
+	if meta.Type != typ {
 		return tags, keyring.ErrUnsupportedKeyType
 	}
 	priv, err := s.findOneLocked(p11.CKO_PRIVATE_KEY, privateKeyManel(kem, meta.Version), false)
@@ -144,10 +165,15 @@ func (m *Manager) UnwrapKeyBatch(ctx context.Context, kem string, binding [48]by
 	return s.installWrapped(kek, binding, batch, names)
 }
 
-func (s *Manager) installWrapped(kek p11.ObjectHandle, binding [48]byte, batch WrappedKeyBatch, names []string) (tags BatchTags, err error) {
+func (s *Manager) installWrapped(kek p11.ObjectHandle, binding []byte, batch WrappedKeyBatch, names []string) (tags BatchTags, err error) {
 	transcript := sha512.New384()
-	transcript.Write([]byte("Keyman wrapped key batch v1\x00"))
-	transcript.Write(binding[:])
+	if len(binding) == sha512.Size {
+		transcript = sha512.New()
+		transcript.Write([]byte("Keyman ML-KEM-1024 wrapped key batch v1\x00"))
+	} else {
+		transcript.Write([]byte("Keyman wrapped key batch v1\x00"))
+	}
+	transcript.Write(binding)
 	transcript.Write(batch.Ciphertext)
 	for i, wrapped := range batch.Wrapped {
 		if len(wrapped) != 40 {
