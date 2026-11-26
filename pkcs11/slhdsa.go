@@ -38,6 +38,9 @@ func (m *Manager) createSLHDSAKeyLocked(id string, version int, typ keyring.KeyT
 	if err != nil {
 		return err
 	}
+	if err := m.requirePQGenerationLocked(typ); err != nil {
+		return err
+	}
 	_, _, err = m.ctx.GenerateKeyPair(m.session, []*p11.Mechanism{p11.NewMechanism(ckmSLHDSAKeyPairGen, nil)},
 		[]*p11.Attribute{
 			p11.NewAttribute(ckaParameterSet, params),
@@ -54,7 +57,7 @@ func (m *Manager) createSLHDSAKeyLocked(id string, version int, typ keyring.KeyT
 			p11.NewAttribute(p11.CKA_LABEL, privateKeyManel(id, version)),
 		})
 	if err != nil {
-		return fmt.Errorf("pkcs11: generate %s pair: %w", typ, err)
+		return pqOperationError(fmt.Sprintf("pkcs11: generate %s pair", typ), err)
 	}
 	return nil
 }

@@ -20,7 +20,8 @@ type ecdsaSignature struct {
 }
 
 // Sign signs a digest for RSA/ECDSA or the original message for pure ML-DSA/SLH-DSA.
-// SLH-DSA uses an empty context and leaves hedging/randomness to the token.
+// crypto.Hash(0) retains empty-context token-default PQ signing. Use
+// PQSigningOptions for an explicit context and/or required signing mode.
 func (m *Manager) Sign(ctx context.Context, keyID string, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	if err := checkContext(ctx); err != nil {
 		return nil, err
@@ -64,18 +65,13 @@ func (m *Manager) Verify(ctx context.Context, keyID string, digest []byte, signa
 	)
 
 	switch meta.Type {
-	case keyring.KeyTypeSLHDSASHA2192s, keyring.KeyTypeSLHDSASHA2256s:
-		if err := requireHash(opts, 0); err != nil {
+	case keyring.KeyTypeMLDSA65, keyring.KeyTypeMLDSA87, keyring.KeyTypeSLHDSASHA2192s, keyring.KeyTypeSLHDSASHA2256s:
+		var free func()
+		mechanism, free, err = pqMechanism(meta.Type, opts)
+		if err != nil {
 			return err
 		}
-		mechanism = pkcs11lib.NewMechanism(ckmSLHDSA, nil)
-		payload, sig = digest, signature
-		label = publicKeyManel(keyID, meta.Version)
-	case keyring.KeyTypeMLDSA65, keyring.KeyTypeMLDSA87:
-		if err := requireHash(opts, 0); err != nil {
-			return err
-		}
-		mechanism = pkcs11lib.NewMechanism(ckmMLDSA, nil)
+		defer free()
 		payload, sig = digest, signature
 		label = publicKeyManel(keyID, meta.Version)
 	case keyring.KeyTypeRSA4096:
@@ -106,9 +102,15 @@ func (m *Manager) Verify(ctx context.Context, keyID string, digest []byte, signa
 		return err
 	}
 	if err := m.ctx.VerifyInit(m.session, []*pkcs11lib.Mechanism{mechanism}, keyHandle); err != nil {
+		if _, ok := pqSignatureMechanism(meta.Type); ok {
+			return pqOperationError("pkcs11: verify init", err)
+		}
 		return fmt.Errorf("pkcs11: verify init: %w", err)
 	}
 	if err := m.ctx.Verify(m.session, payload, sig); err != nil {
+		if _, ok := pqSignatureMechanism(meta.Type); ok {
+			return pqOperationError("pkcs11: verify", err)
+		}
 		return fmt.Errorf("pkcs11: verify: %w", err)
 	}
 	return nil
@@ -141,16 +143,14 @@ func (m *Manager) signManagedLocked(keyID string, meta keyMetadata, digest []byt
 func (m *Manager) signWithHandleLocked(keyType keyring.KeyType, keyHandle pkcs11lib.ObjectHandle, payload []byte, opts crypto.SignerOpts) ([]byte, error) {
 	var mechanism *pkcs11lib.Mechanism
 	switch keyType {
-	case keyring.KeyTypeSLHDSASHA2192s, keyring.KeyTypeSLHDSASHA2256s:
-		if err := requireHash(opts, 0); err != nil {
+	case keyring.KeyTypeMLDSA65, keyring.KeyTypeMLDSA87, keyring.KeyTypeSLHDSASHA2192s, keyring.KeyTypeSLHDSASHA2256s:
+		var free func()
+		var err error
+		mechanism, free, err = pqMechanism(keyType, opts)
+		if err != nil {
 			return nil, err
 		}
-		mechanism = pkcs11lib.NewMechanism(ckmSLHDSA, nil)
-	case keyring.KeyTypeMLDSA65, keyring.KeyTypeMLDSA87:
-		if err := requireHash(opts, 0); err != nil {
-			return nil, err
-		}
-		mechanism = pkcs11lib.NewMechanism(ckmMLDSA, nil)
+		defer free()
 	case keyring.KeyTypeRSA4096:
 		mechanism = pkcs11lib.NewMechanism(pkcs11lib.CKM_RSA_PKCS, nil)
 	case keyring.KeyTypeECDSAP256:
@@ -163,10 +163,16 @@ func (m *Manager) signWithHandleLocked(keyType keyring.KeyType, keyHandle pkcs11
 	}
 
 	if err := m.ctx.SignInit(m.session, []*pkcs11lib.Mechanism{mechanism}, keyHandle); err != nil {
+		if _, ok := pqSignatureMechanism(keyType); ok {
+			return nil, pqOperationError("pkcs11: sign init", err)
+		}
 		return nil, fmt.Errorf("pkcs11: sign init: %w", err)
 	}
 	sig, err := m.ctx.Sign(m.session, payload)
 	if err != nil {
+		if _, ok := pqSignatureMechanism(keyType); ok {
+			return nil, pqOperationError("pkcs11: sign", err)
+		}
 		return nil, fmt.Errorf("pkcs11: sign: %w", err)
 	}
 	if keyType == keyring.KeyTypeECDSAP256 {
@@ -205,7 +211,8 @@ func (m *Manager) signerLocked(keyID string, meta keyMetadata, publicKey crypto.
 	if err != nil {
 		return nil, err
 	}
-	return &Signer{manager: m, keyHandle: keyHandle, keyType: meta.Type, publicKey: publicKey}, nil
+	return &Signer{manager: m, keyHandle: keyHandle, keyType: meta.Type, publicKey: publicKey,
+		key: keyring.Key{ID: keyID, Name: keyID, Type: meta.Type, Version: meta.Version, CreatedAt: meta.CreatedAt, RotatedAt: meta.RotatedAt}}, nil
 }
 
 // ManagedSigner returns a crypto.Signer for a managed asymmetric key and reads
@@ -236,13 +243,37 @@ type Signer struct {
 	keyHandle pkcs11lib.ObjectHandle
 	keyType   keyring.KeyType
 	publicKey crypto.PublicKey
+	key       keyring.Key
 }
 
+// Key returns the metadata snapshot bound to this signer's private key handle.
+// Rotation does not change this snapshot or the signing version.
+func (s *Signer) Key() keyring.Key { return s.key }
+
 func (s *Signer) Public() crypto.PublicKey {
+	switch p := s.publicKey.(type) {
+	case MLDSA65PublicKey:
+		return append(MLDSA65PublicKey(nil), p...)
+	case MLDSA87PublicKey:
+		return append(MLDSA87PublicKey(nil), p...)
+	case SLHDSASHA2192sPublicKey:
+		return append(SLHDSASHA2192sPublicKey(nil), p...)
+	case SLHDSASHA2256sPublicKey:
+		return append(SLHDSASHA2256sPublicKey(nil), p...)
+	}
 	return s.publicKey
 }
 
 func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	return s.SignContext(context.Background(), digest, opts)
+}
+
+// SignContext checks cancellation before starting the token operation. A token
+// call already in progress cannot be interrupted through this API.
+func (s *Signer) SignContext(ctx context.Context, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
 	if s == nil || s.manager == nil {
 		return nil, fmt.Errorf("pkcs11: signer is nil")
 	}
@@ -258,6 +289,9 @@ func (s *Signer) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byt
 
 	s.manager.mu.Lock()
 	defer s.manager.mu.Unlock()
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
 	if err := s.manager.ensureOpen(); err != nil {
 		return nil, err
 	}
