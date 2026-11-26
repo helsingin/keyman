@@ -19,7 +19,8 @@ type ecdsaSignature struct {
 	S *big.Int
 }
 
-// Sign signs a digest for RSA/ECDSA or the original message for pure ML-DSA-65.
+// Sign signs a digest for RSA/ECDSA or the original message for pure ML-DSA/SLH-DSA.
+// SLH-DSA uses an empty context and leaves hedging/randomness to the token.
 func (m *Manager) Sign(ctx context.Context, keyID string, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	if err := checkContext(ctx); err != nil {
 		return nil, err
@@ -63,6 +64,13 @@ func (m *Manager) Verify(ctx context.Context, keyID string, digest []byte, signa
 	)
 
 	switch meta.Type {
+	case keyring.KeyTypeSLHDSASHA2192s, keyring.KeyTypeSLHDSASHA2256s:
+		if err := requireHash(opts, 0); err != nil {
+			return err
+		}
+		mechanism = pkcs11lib.NewMechanism(ckmSLHDSA, nil)
+		payload, sig = digest, signature
+		label = publicKeyManel(keyID, meta.Version)
 	case keyring.KeyTypeMLDSA65, keyring.KeyTypeMLDSA87:
 		if err := requireHash(opts, 0); err != nil {
 			return err
@@ -118,7 +126,8 @@ func (m *Manager) signManagedLocked(keyID string, meta keyMetadata, digest []byt
 			return nil, err
 		}
 		return m.signWithHandleLocked(keyring.KeyTypeRSA4096, keyHandle, payload, opts)
-	case keyring.KeyTypeECDSAP256, keyring.KeyTypeMLDSA65, keyring.KeyTypeMLDSA87:
+	case keyring.KeyTypeECDSAP256, keyring.KeyTypeMLDSA65, keyring.KeyTypeMLDSA87,
+		keyring.KeyTypeSLHDSASHA2192s, keyring.KeyTypeSLHDSASHA2256s:
 		keyHandle, err := m.findOneLocked(pkcs11lib.CKO_PRIVATE_KEY, privateKeyManel(keyID, meta.Version), false)
 		if err != nil {
 			return nil, err
@@ -132,6 +141,11 @@ func (m *Manager) signManagedLocked(keyID string, meta keyMetadata, digest []byt
 func (m *Manager) signWithHandleLocked(keyType keyring.KeyType, keyHandle pkcs11lib.ObjectHandle, payload []byte, opts crypto.SignerOpts) ([]byte, error) {
 	var mechanism *pkcs11lib.Mechanism
 	switch keyType {
+	case keyring.KeyTypeSLHDSASHA2192s, keyring.KeyTypeSLHDSASHA2256s:
+		if err := requireHash(opts, 0); err != nil {
+			return nil, err
+		}
+		mechanism = pkcs11lib.NewMechanism(ckmSLHDSA, nil)
 	case keyring.KeyTypeMLDSA65, keyring.KeyTypeMLDSA87:
 		if err := requireHash(opts, 0); err != nil {
 			return nil, err
@@ -181,7 +195,10 @@ func (m *Manager) Signer(ctx context.Context, keyID string, publicKey crypto.Pub
 }
 
 func (m *Manager) signerLocked(keyID string, meta keyMetadata, publicKey crypto.PublicKey) (*Signer, error) {
-	if meta.Type != keyring.KeyTypeRSA4096 && meta.Type != keyring.KeyTypeECDSAP256 && meta.Type != keyring.KeyTypeMLDSA65 && meta.Type != keyring.KeyTypeMLDSA87 {
+	switch meta.Type {
+	case keyring.KeyTypeRSA4096, keyring.KeyTypeECDSAP256, keyring.KeyTypeMLDSA65, keyring.KeyTypeMLDSA87,
+		keyring.KeyTypeSLHDSASHA2192s, keyring.KeyTypeSLHDSASHA2256s:
+	default:
 		return nil, fmt.Errorf("%w: signer requires asymmetric key, got %s", keyring.ErrUnsupportedKeyType, meta.Type)
 	}
 	keyHandle, err := m.findOneLocked(pkcs11lib.CKO_PRIVATE_KEY, privateKeyManel(keyID, meta.Version), false)

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-image_name="keyman-softhsm:latest"
+image_name="${KEYMAN_TEST_IMAGE:-keyman-softhsm:latest}"
 if [[ -n "${CONTAINER_RUNTIME:-}" ]]; then
     container_runtime="$CONTAINER_RUNTIME"
 elif command -v docker >/dev/null 2>&1; then

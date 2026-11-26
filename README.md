@@ -269,7 +269,73 @@ return manager.Verify(ctx, key.ID, message, signature, crypto.Hash(0))
 
 `signer.Public().(pkcs11.MLDSA65PublicKey)` contains the 1,952-byte FIPS 204 public key. Each signature is 3,309 bytes. Save the public key and its version to verify messages after rotation. A managed signer binds to the version selected when it is opened. Manager-level `Sign`, `PublicKey`, and `Verify` select the latest version on each call. The X.509, CSR, and TLS workflows use RSA or ECDSA.
 
-Run `CONTAINER_RUNTIME=container make test-integration` on a Mac with Apple Container. The suite exercises token signing, rotation, and private-key export rejection. It also verifies a token signature using the separate [pqc](https://github.com/helsingin/pqc) library with just the public key.
+Run `CONTAINER_RUNTIME=container make test-integration` on a Mac with Apple Container. The suite exercises token signing, rotation, and private-key export rejection. It also verifies ML-DSA and SLH-DSA token signatures using the separate [pqc](https://github.com/helsingin/pqc) library with just the public key.
+
+## SLH-DSA signing
+
+The PKCS#11 Go API supports two hash-based signature types:
+
+| Key type | NIST category | Public key type | Public key bytes | Signature bytes |
+|---|---:|---|---:|---:|
+| `KeyTypeSLHDSASHA2192s` | 3 | `pkcs11.SLHDSASHA2192sPublicKey` | 48 | 16,224 |
+| `KeyTypeSLHDSASHA2256s` | 5 | `pkcs11.SLHDSASHA2256sPublicKey` | 64 | 29,792 |
+
+These correspond to `slh-dsa-sha2-192s` and `slh-dsa-sha2-256s` in key metadata.
+Their cryptographic operations run on the token. Keyman does not fall back to
+software signing if a token lacks the required mechanisms. Private keys are
+generated with `CKA_SENSITIVE=true` and `CKA_EXTRACTABLE=false`.
+
+```go
+key, err := manager.CreateKey(ctx, keyring.KeyTypeSLHDSASHA2192s, "evidence-signing")
+if err != nil {
+    return err
+}
+signer, err := manager.ManagedSigner(ctx, key.ID)
+if err != nil {
+    return err
+}
+signature, err := signer.Sign(nil, message, crypto.Hash(0))
+if err != nil {
+    return err
+}
+return manager.Verify(ctx, key.ID, message, signature, crypto.Hash(0))
+```
+
+Pass the original message and `crypto.Hash(0)`. This API uses pure FIPS 205
+SLH-DSA with an empty context; nil options and prehash options are rejected.
+The token controls signing randomness. The `crypto.Signer` reader argument is
+unused, as it is for the existing token signers. Nonempty contexts, explicit
+hedging policies, HashSLH-DSA and dual signatures are outside this API.
+
+`RotateKey` retains the parameter set and keeps earlier token objects.
+Manager operations select the latest version; a `ManagedSigner` stays bound
+to the version selected when opened. Save the public key and version with
+signed evidence for later verification. Reopen a signer after reopening the
+token session. `DeleteKey` removes every stored version.
+
+The container build explicitly enables SLH-DSA in the pinned SoftHSM revision.
+External tokens need `CKM_SLH_DSA_KEY_PAIR_GEN` and `CKM_SLH_DSA`, with
+`CKP_SLH_DSA_SHA2_192S` or `CKP_SLH_DSA_SHA2_256S`, as defined in
+[PKCS#11 v3.2](https://docs.oasis-open.org/pkcs11/pkcs11-spec/v3.2/pkcs11-spec-v3.2.html).
+SoftHSM provides a software token for integration testing; passing those tests
+does not establish support in a particular hardware HSM. This addition does
+not change MBGW security profiles or the existing X.509, CSR and TLS workflows.
+
+To build and test in a separate image:
+
+```sh
+CONTAINER_RUNTIME=container KEYMAN_TEST_IMAGE=keyman-softhsm-slh:test make test-integration
+```
+
+The suite tests both parameter sets, empty messages, malformed signatures,
+rotation, persistence, deletion and private-key export protection. The separate
+`tests/pqc` module uses released `pqc` v0.2.0 / CIRCL v1.6.5 to verify token
+signatures, including historical and version-bound signatures after rotation.
+
+Validated on 26 November 2026: full SoftHSM integration suite and all four
+`pqc` signature profiles passed. Host unit/race tests, `go vet`, and both Go
+command builds also passed. The token tests rejected raw private-key reads,
+making keys extractable, and AES key-wrap attempts against the private keys.
 
 ## ML-KEM-768 token capability
 

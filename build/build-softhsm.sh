@@ -10,7 +10,7 @@ curl --fail --location --retry 3 --output source.tar.gz "https://codeload.github
 echo '4a13de4512cbfcc29b6cc674f2f5f56972ab82c4081e8d25c486c96792718ee8  source.tar.gz' | sha256sum --check
 tar xf source.tar.gz --strip-components=1
 sh autogen.sh
-./configure --prefix=/usr --sysconfdir=/etc/softhsm --localstatedir=/var --enable-mldsa --enable-eddsa --with-objectstore-backend-db
+./configure --prefix=/usr --sysconfdir=/etc/softhsm --localstatedir=/var --enable-mldsa --enable-slhdsa --enable-eddsa --with-objectstore-backend-db
 make -j4
 make install-strip DESTDIR=/opt/softhsm
 rm /opt/softhsm/usr/lib/softhsm/libsofthsm2.a

@@ -213,6 +213,8 @@ func (m *Manager) publicKeyLocked(keyID string, meta keyMetadata) (any, error) {
 		return m.ecdsaPublicKeyLocked(keyID, meta.Version)
 	case keyring.KeyTypeMLDSA65, keyring.KeyTypeMLDSA87:
 		return m.mlDSAPublicKeyLocked(keyID, meta.Version, meta.Type)
+	case keyring.KeyTypeSLHDSASHA2192s, keyring.KeyTypeSLHDSASHA2256s:
+		return m.slhDSAPublicKeyLocked(keyID, meta.Version, meta.Type)
 	default:
 		return nil, fmt.Errorf("%w: public key requires asymmetric key, got %s", keyring.ErrUnsupportedKeyType, meta.Type)
 	}
