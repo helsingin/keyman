@@ -22,9 +22,6 @@ type MLDSA65PublicKey []byte
 type MLDSA87PublicKey []byte
 
 func (m *Manager) createMLDSAKeyLocked(id string, version int, typ keyring.KeyType) error {
-	if err := m.requirePQGenerationLocked(typ); err != nil {
-		return err
-	}
 	params := ckpMLDSA65
 	if typ == keyring.KeyTypeMLDSA87 {
 		params = 3
@@ -45,7 +42,7 @@ func (m *Manager) createMLDSAKeyLocked(id string, version int, typ keyring.KeyTy
 			p11.NewAttribute(p11.CKA_LABEL, privateKeyManel(id, version)),
 		})
 	if err != nil {
-		return pqOperationError(fmt.Sprintf("pkcs11: generate %s pair", typ), err)
+		return fmt.Errorf("pkcs11: generate %s pair: %w", typ, err)
 	}
 	return nil
 }

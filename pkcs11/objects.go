@@ -66,14 +66,15 @@ func (m *Manager) storeMetadataLocked(name string, meta keyMetadata) error {
 		return err
 	}
 
-	existing, err := m.findOneLocked(pkcs11lib.CKO_DATA, metadataLabel(name), true)
-	if err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
+	if existing, err := m.findOneLocked(pkcs11lib.CKO_DATA, metadataLabel(name), true); err == nil {
+		if err := m.ctx.DestroyObject(m.session, existing); err != nil {
+			return fmt.Errorf("pkcs11: replace metadata: %w", err)
+		}
+	} else if !errors.Is(err, keyring.ErrKeyNotFound) {
 		return err
 	}
-	// CKA_VALUE may be read-only even on a modifiable data object. Create the
-	// replacement before retiring the old metadata, so failed writes preserve it.
 
-	replacement, err := m.ctx.CreateObject(m.session, []*pkcs11lib.Attribute{
+	_, err = m.ctx.CreateObject(m.session, []*pkcs11lib.Attribute{
 		pkcs11lib.NewAttribute(pkcs11lib.CKA_CLASS, pkcs11lib.CKO_DATA),
 		pkcs11lib.NewAttribute(pkcs11lib.CKA_LABEL, metadataLabel(name)),
 		pkcs11lib.NewAttribute(pkcs11lib.CKA_APPLICATION, m.appLabel),
@@ -83,11 +84,6 @@ func (m *Manager) storeMetadataLocked(name string, meta keyMetadata) error {
 	})
 	if err != nil {
 		return fmt.Errorf("pkcs11: create metadata: %w", err)
-	}
-	if existing != 0 {
-		if err := m.ctx.DestroyObject(m.session, existing); err != nil {
-			return errors.Join(fmt.Errorf("pkcs11: retire metadata: %w", err), m.ctx.DestroyObject(m.session, replacement))
-		}
 	}
 	return nil
 }

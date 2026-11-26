@@ -1,10 +1,7 @@
 package interop
 
 import (
-	"bytes"
-	"context"
 	"crypto"
-	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -58,66 +55,6 @@ func testTokenSignature(t *testing.T, mgr *pkcs11.Manager, keyType keyring.KeyTy
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Public() must not expose a mutable view of the bound public key.
-	mutable := rawSigningPublicKey(t, oldSigner.Public())
-	mutable[0] ^= 0xff
-	if !bytes.Equal(rawSigningPublicKey(t, oldSigner.Public()), raw) {
-		t.Fatal("public snapshot mutated")
-	}
-	caps, err := mgr.PQCapabilities(ctx, keyType)
-	if err != nil || !caps.Generate || !caps.Sign || !caps.Verify {
-		t.Fatalf("capabilities: %+v %v", caps, err)
-	}
-	for _, signingContext := range [][]byte{nil, []byte("artifact/checkpoint"), bytes.Repeat([]byte{0xa5}, 255)} {
-		for _, message := range [][]byte{nil, []byte("context-bound signature")} {
-			opts := pkcs11.PQSigningOptions{Context: signingContext, Mode: pkcs11.PQDeterministic}
-			first, err := oldSigner.SignContext(ctx, message, opts)
-			if err != nil {
-				t.Fatal(err)
-			}
-			second, err := mgr.Sign(ctx, key.ID, message, opts)
-			if err != nil || !bytes.Equal(first, second) {
-				t.Fatalf("deterministic signing: %v", err)
-			}
-			env := pqc.SignatureEnvelope{Schema: pqc.SignatureSchema, KeyID: key.ID, KeyVersion: 1, Algorithm: algorithm, Context: signingContext, Signature: first}
-			if err := pqc.VerifyWithPublicKey(public, message, &env); err != nil {
-				t.Fatal(err)
-			}
-			if err := mgr.Verify(ctx, key.ID, message, first, opts); err != nil {
-				t.Fatal(err)
-			}
-			opts.Mode = pkcs11.PQRandomized
-			random, err := mgr.Sign(ctx, key.ID, message, opts)
-			if err != nil || bytes.Equal(first, random) {
-				t.Fatalf("randomized signing: %v", err)
-			}
-			env.Signature = random
-			if err := pqc.VerifyWithPublicKey(public, message, &env); err != nil {
-				t.Fatal(err)
-			}
-			env.Context = []byte("wrong")
-			if err := pqc.VerifyWithPublicKey(public, message, &env); err == nil {
-				t.Fatal("accepted wrong context")
-			}
-			opts.Context = []byte("wrong")
-			if err := mgr.Verify(ctx, key.ID, message, random, opts); err == nil {
-				t.Fatal("token accepted wrong context")
-			}
-		}
-	}
-	for _, opts := range []crypto.SignerOpts{pkcs11.PQSigningOptions{Context: make([]byte, 256)}, pkcs11.PQSigningOptions{Mode: 99}, crypto.SHA256} {
-		if _, err := mgr.Sign(ctx, key.ID, nil, opts); !errors.Is(err, pkcs11.ErrUnsupportedPQOperation) {
-			t.Fatalf("unsupported sign: %v", err)
-		}
-		if err := mgr.Verify(ctx, key.ID, nil, nil, opts); !errors.Is(err, pkcs11.ErrUnsupportedPQOperation) {
-			t.Fatalf("unsupported verify: %v", err)
-		}
-	}
-	cancelled, cancel := context.WithCancel(ctx)
-	cancel()
-	if _, err := oldSigner.SignContext(cancelled, nil, crypto.Hash(0)); !errors.Is(err, context.Canceled) {
-		t.Fatalf("cancelled sign: %v", err)
-	}
 	for _, msg := range [][]byte{[]byte("Keyman token signature"), {}} {
 		sig, err := mgr.Sign(ctx, key.ID, msg, crypto.Hash(0))
 		if err != nil {
@@ -150,9 +87,6 @@ func testTokenSignature(t *testing.T, mgr *pkcs11.Manager, keyType keyring.KeyTy
 	rotated, err := mgr.RotateKey(ctx, key.ID)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if oldSigner.Key().Version != 1 || oldSigner.Key().ID != key.ID {
-		t.Fatal("bound metadata changed")
 	}
 	if rotated.Type != keyType || rotated.Version != 2 {
 		t.Fatalf("unexpected rotated key: %+v", rotated)

@@ -301,52 +301,11 @@ if err != nil {
 return manager.Verify(ctx, key.ID, message, signature, crypto.Hash(0))
 ```
 
-Pass the original message and `crypto.Hash(0)` for pure FIPS 205 SLH-DSA
-with an empty context and token-default randomness. Nil and prehash options
-are rejected. The `crypto.Signer` reader argument is unused: signing entropy
-comes from the token. HashSLH-DSA and dual signatures are outside this API.
-
-For ML-DSA-65/87 and SLH-DSA-SHA2-192s/256s, use `PQSigningOptions`
-when a context or an explicit signing mode is required:
-
-```go
-opts := pkcs11.PQSigningOptions{
-    Context: []byte("pqc.profile-artifact.v1"),
-    Mode: pkcs11.PQDeterministic,
-}
-signer, err := manager.ManagedSigner(ctx, key.ID)
-if err != nil {
-    return err
-}
-snapshot := signer.Key() // identity, type and version bound to this handle
-signature, err := signer.SignContext(ctx, message, opts)
-if err != nil {
-    return err
-}
-_ = snapshot // persist alongside signer.Public() and the signed evidence
-return manager.Verify(ctx, key.ID, message, signature, opts) // latest version
-```
-
-Contexts are bytes, limited to 255 bytes. `PQTokenDefault` requests hedging
-preferred; `PQRandomized` requires hedging; `PQDeterministic` requires
-deterministic signing. These map to PKCS#11 v3.2 `CK_SIGN_ADDITIONAL_CONTEXT`.
-The context is part of the signature operation and must match when verifying.
-No context or mode is silently dropped, and no software fallback is used.
-`errors.Is(err, pkcs11.ErrUnsupportedPQOperation)` identifies unsupported
-options/mechanisms; wrapped PKCS#11 errors remain available to callers.
-
-`manager.PQCapabilities(ctx, key.Type)` reports advertised generation, signing
-and verification mechanisms. It cannot prove support for a parameter set,
-context or hedging mode; the requested operation must also succeed. A bound
-signer's `Key()` and PQ `Public()` return snapshots, so rotation cannot change
-its identity or verification key. `SignContext` checks cancellation before
-the token call; an operation already running on the token cannot be cancelled.
-
-If committing PQ key metadata fails, Keyman attempts to remove the newly
-generated pair and returns any cleanup errors. Rotation writes replacement
-metadata before retiring the old record. This is not a transaction across
-process crashes or independent managers: serialize key lifecycle operations
-for a token, and investigate reported cleanup failures before retrying.
+Pass the original message and `crypto.Hash(0)`. This API uses pure FIPS 205
+SLH-DSA with an empty context; nil options and prehash options are rejected.
+The token controls signing randomness. The `crypto.Signer` reader argument is
+unused, as it is for the existing token signers. Nonempty contexts, explicit
+hedging policies, HashSLH-DSA and dual signatures are outside this API.
 
 `RotateKey` retains the parameter set and keeps earlier token objects.
 Manager operations select the latest version; a `ManagedSigner` stays bound
@@ -372,9 +331,6 @@ The suite tests both parameter sets, empty messages, malformed signatures,
 rotation, persistence, deletion and private-key export protection. The separate
 `tests/pqc` module uses released `pqc` v0.2.0 / CIRCL v1.6.5 to verify token
 signatures, including historical and version-bound signatures after rotation.
-The M1 tests also cover empty/nonempty/255-byte contexts, required deterministic
-and randomized modes, rejected options, cancellation, and injected mechanism,
-context and metadata-persistence failures.
 
 Validated on 26 November 2026: full SoftHSM integration suite and all four
 `pqc` signature profiles passed. Host unit/race tests, `go vet`, and both Go

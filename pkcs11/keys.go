@@ -87,7 +87,7 @@ func (m *Manager) createKey(ctx context.Context, keyType keyring.KeyType, name s
 	createdAt := m.now()
 	meta := keyMetadata{Type: keyType, Version: 1, CreatedAt: createdAt, Agreement: agreement}
 	if err := m.storeMetadataLocked(name, meta); err != nil {
-		return nil, errors.Join(err, m.rollbackPQPairLocked(name, 1, keyType))
+		return nil, err
 	}
 
 	return &keyring.Key{ID: name, Name: name, Type: keyType, Version: 1, CreatedAt: createdAt}, nil
@@ -136,7 +136,7 @@ func (m *Manager) RotateKey(ctx context.Context, keyID string) (*keyring.Key, er
 	meta.Version = nextVersion
 	meta.RotatedAt = rotatedAt
 	if err := m.storeMetadataLocked(keyID, meta); err != nil {
-		return nil, errors.Join(err, m.rollbackPQPairLocked(keyID, nextVersion, meta.Type))
+		return nil, err
 	}
 
 	return &keyring.Key{
@@ -380,15 +380,4 @@ func parseVersionFromLabel(label string) int {
 	}
 	n, _ := strconv.Atoi(label[idx+2:])
 	return n
-}
-
-// Roll back a generated PQ pair when committing its metadata fails. Cleanup
-// errors are returned to the caller; token failure is never hidden.
-func (m *Manager) rollbackPQPairLocked(id string, version int, typ keyring.KeyType) error {
-	if _, ok := pqSignatureMechanism(typ); !ok {
-		return nil
-	}
-	return errors.Join(
-		m.destroyIfExistsLocked(pkcs11lib.CKO_PRIVATE_KEY, privateKeyManel(id, version), false),
-		m.destroyIfExistsLocked(pkcs11lib.CKO_PUBLIC_KEY, publicKeyManel(id, version), false))
 }

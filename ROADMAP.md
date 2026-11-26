@@ -5,11 +5,16 @@
 - Add OpenSSL interoperability examples for inspecting generated certificates and validating PKCS#11-backed TLS material.
 - Add CSR generation with an HSM-backed private key.
 - Add certificate import examples for externally issued certificates.
-- Add optional JSON output to the `keyman` CLI for automation.
-- Add a TypeScript management console served by the Go API from the same container.
+- Keep central authentication, authorization, certificate administration and
+  service auditing in OpenBao. Keyman owns token provisioning and operations.
+- Add integration work only for a concrete application requirement, verified
+  against the selected OpenBao PKCS#11 plugin and token provider.
 - Add explicit vendor compatibility notes for SoftHSM and real HSMs as testing broadens.
 
 ## TPM2 Track
+
+This track is deferred until an application needs TPM-backed custody; it does
+not authorize a second central key-management service.
 
 TPM2 support should be implemented as a separate backend rather than being hidden inside the PKCS#11 package.
 
@@ -36,3 +41,11 @@ Before tagging a stable release:
 - add at least one OpenSSL interop workflow
 - document key template choices and portability notes
 - expand error handling around vendor-specific PKCS#11 behavior
+
+## Withdrawn milestone release
+
+The v0.6.1 GitHub release and tag were removed on 27 November 2026. Its M1
+implementation was reverted locally to the v0.6.0 token implementation while
+the shared application roadmap was corrected around OpenBao. The v0.6.0
+SLH-DSA support remains. Do not reuse v0.6.1: existing Go module caches may
+retain it. The next release, when requested, must use a fresh patch version.
