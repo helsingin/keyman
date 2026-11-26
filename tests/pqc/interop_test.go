@@ -19,8 +19,22 @@ func TestVerifyTokenSignature(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mgr.Close()
+	for _, profile := range []struct {
+		keyType   keyring.KeyType
+		algorithm pqc.Algorithm
+	}{
+		{keyring.KeyTypeMLDSA65, pqc.AlgorithmMLDSA65},
+		{keyring.KeyTypeMLDSA87, pqc.AlgorithmMLDSA87},
+	} {
+		t.Run(string(profile.algorithm), func(t *testing.T) {
+			testTokenSignature(t, mgr, profile.keyType, profile.algorithm)
+		})
+	}
+}
+
+func testTokenSignature(t *testing.T, mgr *pkcs11.Manager, keyType keyring.KeyType, algorithm pqc.Algorithm) {
 	ctx := t.Context()
-	key, err := mgr.CreateKey(ctx, keyring.KeyTypeMLDSA65, fmt.Sprintf("interop-%d", time.Now().UnixNano()))
+	key, err := mgr.CreateKey(ctx, keyType, fmt.Sprintf("interop-%d", time.Now().UnixNano()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +47,16 @@ func TestVerifyTokenSignature(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	public := pqc.PublicKey{ID: key.ID, Version: key.Version, Algorithm: pqc.AlgorithmMLDSA65, Use: pqc.KeyUseSignature, PublicKey: pub.(pkcs11.MLDSA65PublicKey)}
+	var raw []byte
+	switch p := pub.(type) {
+	case pkcs11.MLDSA65PublicKey:
+		raw = p
+	case pkcs11.MLDSA87PublicKey:
+		raw = p
+	default:
+		t.Fatalf("unexpected public key type %T", pub)
+	}
+	public := pqc.PublicKey{ID: key.ID, Version: key.Version, Algorithm: algorithm, Use: pqc.KeyUseSignature, PublicKey: raw}
 	for _, msg := range [][]byte{[]byte("Keyman token signature"), {}} {
 		sig, err := mgr.Sign(ctx, key.ID, msg, crypto.Hash(0))
 		if err != nil {
@@ -45,6 +68,15 @@ func TestVerifyTokenSignature(t *testing.T) {
 		}
 		if err := pqc.VerifyWithPublicKey(public, []byte("changed"), &envelope); err == nil {
 			t.Fatal("accepted altered message")
+		}
+		envelope.Context = []byte("unexpected context")
+		if err := pqc.VerifyWithPublicKey(public, msg, &envelope); err == nil {
+			t.Fatal("accepted wrong context")
+		}
+		envelope.Context = nil
+		envelope.Signature = sig[:len(sig)-1]
+		if err := pqc.VerifyWithPublicKey(public, msg, &envelope); err == nil {
+			t.Fatal("accepted truncated signature")
 		}
 	}
 }
