@@ -4,7 +4,7 @@ RUN sh /tmp/build-softhsm.sh
 
 FROM golang:1.26-trixie
 
-RUN apt-get update && apt-get install -y --no-install-recommends opensc libssl3t64 libsqlite3-0 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends opensc openssl libssl-dev pkg-config libsqlite3-0 && rm -rf /var/lib/apt/lists/*
 COPY --from=softhsm /opt/softhsm/ /
 
 RUN mkdir -p /var/lib/softhsm/tokens
@@ -22,7 +22,7 @@ COPY pkcs11/*.go ./pkcs11/
 COPY cmd/keyman/*.go ./cmd/keyman/
 COPY cmd/keymand/*.go ./cmd/keymand/
 COPY tpm2/*.go ./tpm2/
-COPY tests/pqc/go.mod tests/pqc/go.sum tests/pqc/*.go ./tests/pqc/
-RUN cd tests/pqc && go mod download
+COPY tests/openssl/go.mod tests/openssl/go.sum tests/openssl/*.go ./tests/openssl/
+RUN cd tests/openssl && go mod download
 
-CMD ["sh", "-ec", "go test -v -tags=integration ./... && cd tests/pqc && go test -v ./..."]
+CMD ["sh", "-ec", "go test -v -tags=integration ./... && cd tests/openssl && go test -v ./..."]

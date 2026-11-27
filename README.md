@@ -269,7 +269,7 @@ return manager.Verify(ctx, key.ID, message, signature, crypto.Hash(0))
 
 `signer.Public().(pkcs11.MLDSA65PublicKey)` contains the 1,952-byte FIPS 204 public key. Each signature is 3,309 bytes. Save the public key and its version to verify messages after rotation. A managed signer binds to the version selected when it is opened. Manager-level `Sign`, `PublicKey`, and `Verify` select the latest version on each call. The X.509, CSR, and TLS workflows use RSA or ECDSA.
 
-Run `CONTAINER_RUNTIME=container make test-integration` on a Mac with Apple Container. The suite exercises token signing, rotation, and private-key export rejection. It also verifies ML-DSA and SLH-DSA token signatures using the separate [pqc](https://github.com/helsingin/pqc) library with just the public key.
+Run `CONTAINER_RUNTIME=container make test-integration` on a Mac with Apple Container. The suite exercises token signing, rotation, and private-key export rejection. It also verifies ML-DSA and SLH-DSA token signatures using OpenSSL with just the public key. The test image includes OpenSSL 3.5 or later; Keyman has no `pqc` module dependency.
 
 ## SLH-DSA signing
 
@@ -329,11 +329,26 @@ CONTAINER_RUNTIME=container KEYMAN_TEST_IMAGE=keyman-softhsm-slh:test make test-
 
 The suite tests both parameter sets, empty messages, malformed signatures,
 rotation, persistence, deletion and private-key export protection. The separate
-`tests/pqc` module uses released `pqc` v0.2.0 / CIRCL v1.6.5 to verify token
-signatures, including historical and version-bound signatures after rotation.
+`tests/openssl` module uses OpenSSL's EVP verification API through CGO to verify token signatures,
+including historical and version-bound signatures after rotation. It rejects
+altered messages, incorrect contexts, truncated signatures and wrong keys.
+Only public SubjectPublicKeyInfo DER, messages and signatures reach the verifier;
+private keys remain in the token. Missing algorithms or verifier invocation errors
+fail the test rather than counting as successful rejection. The separate test
+module needs OpenSSL 3.5+ headers, libcrypto and pkg-config, supplied by the test
+image. EVP retains empty-message coverage that the OpenSSL 3.5 `pkeyutl` CLI cannot
+handle. This checks format/API
+interoperability: SoftHSM and the verifier both use OpenSSL, so it does not provide
+an independent algorithm implementation.
 
-Validated on 26 November 2026: full SoftHSM integration suite and all four
-`pqc` signature profiles passed. Host unit/race tests, `go vet`, and both Go
+Validated on 27 November 2026 with OpenSSL 3.5.9: the rebuilt test image passed
+the full SoftHSM integration suite and all four EVP interoperability profiles,
+including empty messages, context/tamper rejection and rotation. Host unit tests
+and `go vet` also passed.
+
+Earlier validation on 26 November 2026, before replacing the CIRCL-based verifier:
+the full SoftHSM integration suite and all four signature profiles passed.
+Host unit/race tests, `go vet`, and both Go
 command builds also passed. The token tests rejected raw private-key reads,
 making keys extractable, and AES key-wrap attempts against the private keys.
 
